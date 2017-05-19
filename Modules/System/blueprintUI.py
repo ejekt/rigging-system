@@ -59,8 +59,15 @@ class Blueprint_UI:
 		icon = mod.ICON
 		# create the UI button
 		buttonSize = 65
-		row = mc.rowLayout(numberOfColumns=2, columnWidth=([1,buttonSize]), adjustableColumn=2, columnAttach=([1, 'both', 0],[2, 'both', 5]), h=self.scrollWidth)
-		self.dUiElements['moduleButton_' + module] = mc.symbolButton(w=buttonSize, h=buttonSize, image=icon, command=partial(self.installModule, module))
+		row = mc.rowLayout(numberOfColumns=2, 
+						columnWidth=([1,buttonSize]), 
+						adjustableColumn=2, 
+						columnAttach=([1, 'both', 0],[2, 'both', 5]), 
+						h=self.scrollWidth)
+		self.dUiElements['moduleButton_' + module] = mc.symbolButton(w=buttonSize, 
+													h=buttonSize, 
+													image=icon, 
+													command=partial(self.installModule, module))
 		textColumn = mc.columnLayout(columnAlign='center')
 		mc.text(align='center', label=title) 		#  w=self.scrollWidth - buttonSize - 16
 		mc.scrollField(text=desc, editable=False, wordWrap=True)
@@ -70,18 +77,7 @@ class Blueprint_UI:
 		''' base blueprint module installer '''
 		# access the blueprint model class name
 		# needs to create a new namespace for each installation, incrementing
-
-		mod = __import__('Blueprint.' + module, {}, {}, [module])
-		reload(mod)	
-		moduleClass = getattr(mod, mod.CLASS_NAME)
-		# build 
-		self.partName = 'userGeneratedName'
-		'''
-		cNamer = n.Name( type='blueprint', mod=mod.CLASS_NAME, part=self.partName)
-		cNamer.constructName()
-		sBaseName = cNamer.name
-		print 'BASENAME: ' + sBaseName
-
+		sBaseName = 'instance_'
 		# check to see if any rigging tool namespaces already exist in the scene root
 		mc.namespace(setNamespace=':')
 		namespaces = mc.namespaceInfo(listOnlyNamespaces=True)
@@ -89,9 +85,11 @@ class Blueprint_UI:
 			if namespaces[i].find('__') != -1:
 				namespaces[i]=namespaces[i].partition('__')[2]
 
-		if mc.namespace(exists=':%s' % sBaseName ):
-			print '\t--------'+ sBaseName	+ ' ---exists'
-			cNamer.idx = cNamer.getIndex() + 1
-			print 'incrementing to:  ' + str(cNamer.idx)'''
-		moduleInstance = moduleClass(self.partName)
+		iSuffix = utils.findHighestIndex(namespaces, sBaseName) + 1
+		userSpecName = sBaseName + str(iSuffix)
+		# import the module being clicked and run it's install
+		mod = __import__('Blueprint.' + module, {}, {}, [module])
+		reload(mod)	
+		moduleClass = getattr(mod, mod.CLASS_NAME)
+		moduleInstance = moduleClass(userSpecName)
 		moduleInstance.install()

@@ -26,7 +26,7 @@ def findAllFiles(sDir, sFileExtension):
 
 	return aReturnList
 
-def findHighestIndex_buzz3d(aNames, sBaseName):
+def findHighestIndex(aNames, sBaseName):
 	import re
 	iHighestValue = 0
 
@@ -34,7 +34,7 @@ def findHighestIndex_buzz3d(aNames, sBaseName):
 		if n.find(sBaseName) == 0:
 			suffix = n.partition(sBaseName)[2]
 			#suffix = sBaseName
-			print 'suffix ' + suffix
+			#print 'suffix ' + suffix
 			if re.match('^[0-9]*$', suffix):
 				iIndex = int(suffix)
 				if iIndex > iHighestValue:
@@ -42,20 +42,6 @@ def findHighestIndex_buzz3d(aNames, sBaseName):
 	print 'highest value found : ' + str(iHighestValue)
 	return iHighestValue
 
-def findHighestIndex(sBaseName):
-	import re
-	iHighestValue = 0
-
-
-	suffix = sBaseName.rpartition('_')[2]
-	#suffix = sBaseName
-	print 'suffix ' + suffix
-	if re.match('^[0-9]*$', suffix):
-		iIndex = int(suffix)
-		if iIndex > iHighestValue:
-			iHighestValue = iIndex
-	print 'highest value found : ' + str(iHighestValue)
-	return iHighestValue
 
 def checkNamespaceIndex(sBaseName):
 	mc.namespace(setNamespace=':')
