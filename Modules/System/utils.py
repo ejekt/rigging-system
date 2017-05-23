@@ -122,13 +122,10 @@ def basicStretchyIK(sRootJoint,
 	# create the start and end locators
 	rootLoc = mc.spaceLocator(n=sRootJoint+'_rootPosLoc')[0]
 	rootLoc_pCon = mc.pointConstraint(sRootJoint, rootLoc, mo=False, n=rootLoc+'_pConst')[0]
-
 	endLoc = mc.spaceLocator(n=sEndJoint+'_endPosLoc')[0]
 	mc.xform(endLoc, ws=True, absolute=True, t=mc.xform(ikHandle, q=True, ws=True, t=True))
 	ikHandle_pCon = mc.pointConstraint(endLoc, ikHandle, mo=False, n=ikHandle+'_pConst')[0]
-
 	containedNodes.extend([rootLoc, endLoc, rootLoc_pCon, ikHandle_pCon])
-
 	mc.setAttr(rootLoc+'.v', 0)
 	mc.setAttr(endLoc+'.v', 0)
 
