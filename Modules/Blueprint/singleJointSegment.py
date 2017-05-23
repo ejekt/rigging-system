@@ -17,7 +17,12 @@ class SingleJointSegment(bp.Blueprint):
 		
 		jointInfo = [['root_joint', [0.0,0.0,0.0]], ['end_joint',[4.0,0.0,0.0]]]
 
+		print sUserSpecifiedName
+
 		bp.Blueprint.__init__(self, CLASS_NAME, sUserSpecifiedName, jointInfo)
 
 	def install_custom(self, joints):
 		self.createOrientationControl(joints[0], joints[1])
+
+	def lockPhase1(self):
+		print 'Lock PHASE 1'

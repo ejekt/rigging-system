@@ -11,6 +11,21 @@ def findAllModules(sDir):
 
 	return aModuleList
 
+def findAllModuleNames(sDir):
+	validModules = findAllModules(sDir)
+	validModuleNames = []
+
+	packageDir = sDir.partition('/Modules/')[2]
+
+	for module in validModules:
+		mod = __import__(packageDir+'.' + module, {}, {}, [module])
+		reload(mod)
+
+		validModuleNames.append(mod.CLASS_NAME)
+
+	return(validModules, validModuleNames)
+
+
 def findAllFiles(sDir, sFileExtension):
 	# Search the given directory for all files with given file extension
 	# returns: list of file names excluding the extension

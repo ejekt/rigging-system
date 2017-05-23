@@ -37,7 +37,7 @@ class Blueprint_UI:
 		mc.setParent(self.dUiElements['topLevelColumn'])
 		self.dUiElements['lockPublishColumn'] = mc.columnLayout(adj=True, columnAlign='center', rowSpacing=3)
 		mc.separator()
-		self.dUiElements['lockBtn'] = mc.button(label='Lock')
+		self.dUiElements['lockBtn'] = mc.button(label='Lock', command=self.lock)
 		mc.separator()
 		self.dUiElements['publishBtn'] = mc.button(label='Publish')
 		mc.separator()
@@ -143,3 +143,60 @@ class Blueprint_UI:
 		moduleTransform = moduleInstance.moduleTransform
 		mc.select(moduleTransform, r=True)
 		mc.setToolTo('moveSuperContext')
+	
+	def lock(self, *args):
+		# 
+		result = mc.confirmDialog(messageAlign='center', title='Lock Blueprint', 
+					message='The action of locking will convert the current blueprint modules to joints. \
+							\nIt is UNDOABLE.\
+							Do you wish to continue?', 
+							button=['Accept','Cancel'],
+							defaultButton='Cancel',
+							cancelButton='Cancel',
+							dismissString='Cancel', 
+							icon='warning')
+		if result == 'Cancel':
+			print 'pressed cancel'
+			return None
+
+		moduleInfo = [] # store (module, userSpecificName) pairs
+		namespaces = mc.namespaceInfo(listOnlyNamespaces=True)
+
+		moduleNameInfo = utils.findAllModuleNames('/Modules/Blueprint')
+		validModules = moduleNameInfo[0]
+		validModuleNames = moduleNameInfo[1]
+
+		for n in namespaces:
+			splitString = n.partition('__')
+			if splitString[1] != '':
+				module = splitString[0]
+				userSpecificName = splitString[2]
+
+				if module in validModuleNames:
+					index = validModuleNames.index(module)
+
+					moduleInfo.append([validModules[index], userSpecificName])
+
+		if len(moduleInfo) == 0:
+			mc.confirmDialog(ma='center', title='Lock Blueprint',
+							message='There appear to be no blueprint module instances in the scene.\
+							\n Aborting lock',
+							button=['Accept'],
+							db='Accept',
+							icon='critical')
+			return None 
+
+		moduleInstances = []
+		for module in moduleInfo:
+			mod = __import__('Blueprint.'+module[0], {}, {}, [module[0]])
+			reload(mod)
+
+			moduleClass = getattr(mod, mod.CLASS_NAME)
+			moduleInst = moduleClass(sUserSpecifiedName=module[1])
+			moduleInst.lockPhase1()
+
+
+
+
+
+
