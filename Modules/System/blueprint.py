@@ -15,7 +15,7 @@ class Blueprint:
 		self.moduleNamespace = self.moduleName + '__' + self.userSpecifiedName
 		self.containerName = self.moduleNamespace + ":module_container"
 
-		self.jointInfo = aJointInfo
+		self.jointInfo = aJointInfo			# list of touples [('jointName', [iX,iY,iZ]), ] 
 
 
 		print 'init module namespace: ', self.moduleNamespace
@@ -25,6 +25,20 @@ class Blueprint:
 		print "install_custom() isn't implemented"
 
 
+	def lockPhase1(self):
+		# gather and return all required information from this modules control object
+		# jointPositions = list of joint positions from the root down the hierarchy
+		# jointOrientations = list of orientations or a list of axis information
+		#			# these are passed as a touple: (orientations,None) or (None, axisInfo)
+		# jointRotationOrder = list of joint rotation order (intger values gathered with getAttr)
+		# jointPreferredAngles = a list of jiont preferred angles, optional (can pass None)
+		# hookObject = self.findHookObjectForLock()
+		# rootTransform = a bool, either True or False. True = T,R,S on root joint. False = R only
+		# 
+		# moduleInfo = (jointPositions, jointOrientations, jointRotationOrder, jointPreferredAngles, hookObject, rootTransform)
+		# return moduleInfo
+
+		return None
 
 	# Baseclass Methods
 	def install(self):
@@ -228,7 +242,222 @@ class Blueprint:
 		parentJoint_noNs = utils.stripAllNamespaces(parentJoint)[1]
 		attrName = parentJoint_noNs + '_orientation'
 		#childJoint_noNs= utils.stripAllNamespaces(child)[1]
+		utils.addNodeToContainer(self.containerName, self.orientationControlGrp, ihb=True)
 		mc.container(orientationContainer, e=True, publishAndBind=[orientationControl+'.rx', attrName])
 		mc.container(self.containerName, e=True, publishAndBind=[orientationContainer+'.'+attrName, attrName])
 
 		return orientationControl
+
+	def getOrientationControl(self, sJoint):
+		# based on the orientation control file used in this system 
+		# concatinate jiont with "_orientation_control
+		return sJoint+'_orientation_control'
+
+	def getJoints(self):
+		# returns all the joints in the module with namespace
+		jointNs = self.moduleNamespace + ':'
+		joints = []
+
+		for ji in self.jointInfo:
+			joints.append(jointNs + ji[0])
+
+		return joints
+
+	def getJointOrientation(self, sJoint, sCleanParent):
+		# clean out the joints orientation and return it with a duplicated joint using the adjusted orientation
+		newCleanParent = mc.duplicate(sJoint, parentOnly=True)[0]
+		# this won't work if the joint is ever not a child of cleanparent, 
+		# parenting will error due to the locked state of the whole blueprint
+		#if not sCleanParent in mc.listRelatives(newCleanParent, parent=True):
+		#	mc.parent(newCleanParent, sCleanParent, absolute=True)
+
+		# freeze rotation on new duplicate of sJoint 
+		# so that any world orientation gets saved in it's jointOrient
+		mc.makeIdentity(newCleanParent, apply=True, r=True, s=False, t=False)
+		# set it's rotateX to that of the orientationControl
+		mc.setAttr(newCleanParent+'.rx', mc.getAttr(self.getOrientationControl(sJoint)+'.rx'))
+		# freeze again to bake the orientationControl RX in to the jointOrientX
+		mc.makeIdentity(newCleanParent, apply=True, r=True, s=False, t=False)
+
+		oX = mc.getAttr(newCleanParent+'.jointOrientX')
+		oY = mc.getAttr(newCleanParent+'.jointOrientY')
+		oZ = mc.getAttr(newCleanParent+'.jointOrientZ')
+
+		orientationVal = (oX, oY, oZ)
+
+		return (orientationVal, newCleanParent)
+
+	def lockPhase2(self, dModuleInfo):
+		jointPositions = dModuleInfo['jointPositions']
+		numJoints = len(jointPositions)
+		# divide the dictionary module info we got from phase1 into variables 
+		jointOrientations = dModuleInfo['jointOrientations']
+		orientWithAxis = False
+		pureOrientation = False
+		if jointOrientations[0] == None:
+			orientWithAxis = True
+			jointOrientations = jointOrientations[1]
+		else:
+			pureOrientation = True
+			jointOrientations = jointOrientations[0]
+		numOrientations = len(jointOrientations)
+
+		jointRotationOrder = dModuleInfo['jointRotationOrder']
+		numRotationOrder = len(jointRotationOrder)
+
+		jointPreferredAngles = dModuleInfo['jointPreferredAngles']
+		numPreferredAngles = 0
+		if jointPreferredAngles != None:
+			numPreferredAngles = len(jointPreferredAngles)
+
+		hookObject = dModuleInfo['hookObject']
+		rootTransform = dModuleInfo['rootTransform']
+
+		# DELETE the blueprint controls
+		mc.lockNode(self.containerName, lock=False, lockUnpublished=False)
+		mc.delete(self.containerName)
+		mc.namespace(setNamespace=':')
+
+		#
+		print '- Gathered from lockPhase1:\n', dModuleInfo.items()
+		#
+		# RE-BUILD SKELETON BASED ON dModuleInfo
+		jointRadius = 1
+		if numJoints == 1:
+			jointRadius = 1.5
+		newJoints = []
+		# create the joints
+		for i in range(numJoints):
+			newJoint = ""
+			mc.select(cl=True)
+			if orientWithAxis:	
+				newJoint = mc.joint(n=self.moduleNamespace+':bp_'+self.jointInfo[i][0], 
+									p=jointPositions[i], 
+									rotationOrder='xyz',
+									radius=jointRadius)		
+				if i != 0:		# i=0 is root joint. So this is for children joints
+								# orient the parent joint to the newly created joint
+					mc.parent(newJoint, newJoints[i-1], absolute=True)
+					offsetIndex = i - 1
+					if offsetIndex < numOrientations:
+						mc.joint(newJoints[offsetIndex], e=True, 
+									oj=jointOrientations[offsetIndex][0],
+									sao=jointOrientations[offsetIndex][1])
+						mc.makeIdentity(newJoint, rotate=True, apply=True)
+			if pureOrientation:
+				if i != 0:
+					mc.select(newJoints[i-1])
+					jointOrientation = [0.0, 0.0, 0.0]
+				if i < numOrientations:
+					jointOrientation = [ jointOrientations[i][0], jointOrientations[i][1], jointOrientations[i][2]  ]
+				newJoint = mc.joint(n=self.moduleNamespace+':bp_'+self.jointInfo[i][0], 
+									p=jointPositions[i], 
+									orientation=jointOrientation,
+									rotationOrder='xyz',
+									radius=jointRadius)
+			newJoints.append(newJoint)
+
+			if i < numRotationOrder:
+				mc.setAttr(newJoint+'.rotateOrder', int(jointRotationOrder[i]))
+
+			if i < numPreferredAngles:
+				mc.setAttr(newJoint+'.preferredAngleX', jointPreferredAngles[i][0])
+				mc.setAttr(newJoint+'.preferredAngleY', jointPreferredAngles[i][1])
+				mc.setAttr(newJoint+'.preferredAngleZ', jointPreferredAngles[i][2])
+
+			mc.setAttr(newJoint+'.segmentScaleCompensate', 0)
+
+		bpGrp = mc.group(em=True, n=self.moduleNamespace+':bp_joints_grp')
+		mc.parent(newJoints[0], bpGrp, absolute=True)
+		creationPoseGrpNodes = []
+		creationPoseGrpNodes = mc.duplicate(bpGrp, n=self.moduleNamespace+':creationPose_joint_grp', renameChildren=True)
+		creationPoseGrp = creationPoseGrpNodes[0]
+
+		creationPoseGrpNodes.pop(0)
+		for i, node in enumerate(creationPoseGrpNodes):
+			fixName = mc.rename(node, self.moduleNamespace + ':creationPose_' + self.jointInfo[i][0])
+			mc.setAttr(fixName+'.v', 0)
+
+		# SYSTEM setup for tramsformation blending
+		# Creation Pose Weight network
+		mc.select(bpGrp, replace=True)
+		mc.addAttr(ln='controlModulesInstalled', at='bool', dv=0, k=False)
+		settingsLoc = mc.spaceLocator(n=self.moduleNamespace+':SETTINGS')[0]
+		mc.setAttr(settingsLoc+'.v', 0)
+		mc.select(settingsLoc, replace=True)
+		mc.addAttr(ln='activeModule', at='enum', en='None:', k=False)
+		mc.addAttr(ln='creationPoseWeight', at='float', dv=1, k=False)
+
+		# add and multiply node creations
+		utilityNodes = []
+		for i, joint in enumerate(newJoints):
+			if i < (numJoints - 1) or numJoints == 1:
+				# initial bp dummy rotation multiply
+				# setup first addNode and dummy multiplyNode for each joint but the last 
+				# nil rotations go into the addnode input, and that maps to it's repective joint rotate
+				addNode = mc.shadingNode('plusMinusAverage', n=joint+'_addRotations', asUtility=True)
+				mc.connectAttr(addNode+'.output3D', joint+'.rotate', f=True)
+				utilityNodes.append(addNode)
+				dummyRotationMultiply = mc.shadingNode('multiplyDivide', n=joint+'_multiplyDummyRotation', asUtility=True)
+				mc.connectAttr(dummyRotationMultiply+'.output', addNode+'.input3D[0]', f=True)
+				utilityNodes.append(dummyRotationMultiply)
+			if i > 0:
+				# creattion pose weight multiplies the otiginalTx value of all the joints but the first
+				# that pipes into an addTxNode that connects to the respective joints tX
+				originalTx = mc.getAttr(joint+'.tx')
+				addTxNode = mc.shadingNode('plusMinusAverage', n=joint+'_addTx', asUtility=True)
+				mc.connectAttr(addTxNode+'.output1D', joint+'.tx', f=True)
+				utilityNodes.append(addTxNode)
+				originalTxMultiply = mc.shadingNode('multiplyDivide', n=joint+'_multiplyOiginalTx', asUtility=True)
+				mc.setAttr(originalTxMultiply+'.input1X', originalTx, lock=True)
+				mc.connectAttr(settingsLoc+'.creationPoseWeight', originalTxMultiply+'.input2X', f=True)
+				mc.connectAttr(originalTxMultiply+'.outputX', addTxNode+'.input1D[0]', f=True)
+				utilityNodes.append(originalTxMultiply)
+			else:
+				if rootTransform:
+					# connect creationPoseWeight to the translate
+					originalTranslates = mc.getAttr(joint+'.translate')[0]
+					addTranslateNode = mc.shadingNode('plusMinusAverage', n=joint+'_addOriginalTranslate', asUtility=True)
+					mc.connectAttr(addTranslateNode+'.output3D', joint+'.translate', f=True)
+					utilityNodes.append(addTranslateNode)
+
+					originalTranslateMultiply = mc.shadingNode('multiplyDivide', n=joint+'_multiplyOriginalTranslate', asUtility=True)
+					mc.setAttr(originalTranslateMultiply+'.input1', originalTranslates[0],originalTranslates[1],originalTranslates[2], type='double3' )
+					for axis in ['X', 'Y', 'Z']:
+						mc.connectAttr(settingsLoc+'.creationPoseWeight', originalTranslateMultiply+'.input2'+axis)
+					mc.connectAttr(originalTranslateMultiply+'.output', addTranslateNode+'.input3D[0]', f=True)
+					utilityNodes.append(originalTranslateMultiply)
+
+					# scale
+					originalScales = mc.getAttr(joint+'.scale')[0]
+					addScaleNode = mc.shadingNode('plusMinusAverage', n=joint+'_addOriginalScale', asUtility=True)
+					mc.connectAttr(addScaleNode+'.output3D', joint+'.scale', f=True)
+					utilityNodes.append(addScaleNode)
+
+					originalScaleMultiply = mc.shadingNode('multiplyDivide', n=joint+'_multiplyOriginalScale', asUtility=True)
+					mc.setAttr(originalScaleMultiply+'.input1', originalScales[0],originalScales[1],originalScales[2], type='double3' )
+					for axis in ['X', 'Y', 'Z']:
+						mc.connectAttr(settingsLoc+'.creationPoseWeight', originalScaleMultiply+'.input2'+axis)
+					mc.connectAttr(originalScaleMultiply+'.output', addScaleNode+'.input3D[0]', f=True)
+					utilityNodes.append(originalScaleMultiply)
+
+		bpNodes = utilityNodes
+		bpNodes.append(bpGrp)
+		bpNodes.append(creationPoseGrp)
+
+		bpContainer = mc.container(n=self.moduleNamespace+':bp_container')
+		utils.addNodeToContainer(bpContainer, bpNodes, ihb=True)
+
+		moduleGrp = mc.group(em=True, name=self.moduleNamespace+':module_grp')
+		mc.parent(settingsLoc, moduleGrp, absolute=True)
+
+		# temp
+		for group in [bpGrp, creationPoseGrp]:
+			mc.parent(group, moduleGrp, absolute=True)
+		moduleContainer = mc.container(n=self.moduleNamespace+':module_container')
+		utils.addNodeToContainer(moduleContainer, [moduleGrp, settingsLoc, bpContainer], includeShapes=True)
+
+		mc.container(moduleContainer, e=True, publishAndBind=[settingsLoc+'.activeModule', 'activeModule'])
+		mc.container(moduleContainer, e=True, publishAndBind=[settingsLoc+'.creationPoseWeight', 'creationPoseWeight'])
+
+		mc.lockNode(moduleContainer, lock=True, lockUnpublished=True)

@@ -12,6 +12,8 @@ def findAllModules(sDir):
 	return aModuleList
 
 def findAllModuleNames(sDir):
+	# take list of available modules and 
+	# return list of touples: (moduleName, module.CLASS_NAME)
 	validModules = findAllModules(sDir)
 	validModuleNames = []
 

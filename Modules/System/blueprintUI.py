@@ -25,9 +25,12 @@ class Blueprint_UI:
 
 		# setup tabs
 		tabHeight = 500
-		self.dUiElements['tabs'] = mc.tabLayout(h=tabHeight, innerMarginWidth=5, innerMarginHeight=5, w=400)
-		tabWidth = mc.tabLayout(self.dUiElements['tabs'], q=True, width=True) # changed 'tabs'
-		print tabWidth, ' WIDTH'
+		self.dUiElements['tabs'] = mc.tabLayout(h=tabHeight, 
+								innerMarginWidth=5, 
+								innerMarginHeight=5, 
+								w=400) 	# had to set width otherwise had a value of 100
+		tabWidth = mc.tabLayout(self.dUiElements['tabs'], q=True, width=True) 
+		#print tabWidth, ' WIDTH'
 		self.scrollWidth = tabWidth - 40
 		# initialize the module tab with a button per module
 		self.initializeModuleTab(tabHeight, tabWidth)
@@ -49,10 +52,12 @@ class Blueprint_UI:
 		scrollHeight = tabHeight
 		self.dUiElements['moduleColumn'] = mc.columnLayout(adj=True, rs=3)
 		self.dUiElements['moduleFrameLayout'] = mc.frameLayout(fn='tinyBoldLabelFont', h=300,
-												collapsable=False, borderVisible=False, labelVisible=False)
+												collapsable=False, 
+												borderVisible=False, 
+												labelVisible=False)
 		self.dUiElements['moduleListScroll'] = mc.scrollLayout(hst=0) # horizontalScrollBarThickness
 		self.dUiElements['moduleListColumn'] = mc.columnLayout(columnWidth=self.scrollWidth, 
-										adj=True, rs=2)
+												adj=True, rs=2)
 
 		# begin list of modules and install a button for each blueprint module in the folder
 		aModuleList = []
@@ -145,7 +150,7 @@ class Blueprint_UI:
 		mc.setToolTo('moveSuperContext')
 	
 	def lock(self, *args):
-		# 
+		# Get user confirmation to continue lock method
 		result = mc.confirmDialog(messageAlign='center', title='Lock Blueprint', 
 					message='The action of locking will convert the current blueprint modules to joints. \
 							\nIt is UNDOABLE.\
@@ -158,16 +163,15 @@ class Blueprint_UI:
 		if result == 'Cancel':
 			print 'pressed cancel'
 			return None
-
+		# Gather all modules in directory
 		moduleInfo = [] # store (module, userSpecificName) pairs
-		namespaces = mc.namespaceInfo(listOnlyNamespaces=True)
-
 		moduleNameInfo = utils.findAllModuleNames('/Modules/Blueprint')
 		validModules = moduleNameInfo[0]
 		validModuleNames = moduleNameInfo[1]
-
+		# collect namespace info of existing modules in the scene
+		namespaces = mc.namespaceInfo(listOnlyNamespaces=True)
 		for n in namespaces:
-			splitString = n.partition('__')
+			splitString = n.partition('__')			# only blueprint modules have double underscore
 			if splitString[1] != '':
 				module = splitString[0]
 				userSpecificName = splitString[2]
@@ -176,7 +180,7 @@ class Blueprint_UI:
 					index = validModuleNames.index(module)
 
 					moduleInfo.append([validModules[index], userSpecificName])
-
+		# If there are no blueprint modules inform user and exit lock method
 		if len(moduleInfo) == 0:
 			mc.confirmDialog(ma='center', title='Lock Blueprint',
 							message='There appear to be no blueprint module instances in the scene.\
@@ -185,15 +189,22 @@ class Blueprint_UI:
 							db='Accept',
 							icon='critical')
 			return None 
-
+		# START LOCK
+		# LOCK PHASE 1
 		moduleInstances = []
 		for module in moduleInfo:
+			# module will hold a ['moduleClassName', userSpecifiedName]
 			mod = __import__('Blueprint.'+module[0], {}, {}, [module[0]])
 			reload(mod)
 
-			moduleClass = getattr(mod, mod.CLASS_NAME)
-			moduleInst = moduleClass(sUserSpecifiedName=module[1])
-			moduleInst.lockPhase1()
+			cModuleClass = getattr(mod, mod.CLASS_NAME)
+			cModuleInst = cModuleClass(sUserSpecifiedName=module[1])
+			dModuleInfo = cModuleInst.lockPhase1()
+			moduleInstances.append( (cModuleInst, dModuleInfo) )
+
+		# LOCK PHASE 2
+		for module in moduleInstances:
+			module[0].lockPhase2(module[1])
 
 
 
