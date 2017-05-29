@@ -7,7 +7,7 @@ reload(utils)
 
 
 class Blueprint:
-	def __init__(self, sModuleName, sName, aJointInfo):
+	def __init__(self, sModuleName, sName, aJointInfo, sHookObj):
 		# module namespace name initialized
 		self.moduleName = sModuleName
 		self.userSpecifiedName = sName
@@ -17,6 +17,12 @@ class Blueprint:
 
 		self.jointInfo = aJointInfo			# list of touples [('jointName', [iX,iY,iZ]), ] 
 
+		self.hookObject = None
+		if sHookObj:
+			partitionInfo = sHookObj.rpartition('_translation_control')
+			if partitionInfo[1] != '' and partitionInfo[2] == '':
+				self.hookObject = sHookObj
+		print self.hookObject
 
 		print 'init module namespace: ', self.moduleNamespace
 
@@ -39,6 +45,8 @@ class Blueprint:
 		# return moduleInfo
 
 		return None
+	def Ui_custom(self):
+		print 'no custom ui - this is ok'
 
 	# Baseclass Methods
 	def install(self):
@@ -94,6 +102,9 @@ class Blueprint:
 
 		rootJoint_pCon = mc.pointConstraint(translationControls[0], joints[0], mo=False, n=joints[0]+'_pCon')
 		utils.addNodeToContainer(self.containerName, rootJoint_pCon)
+
+		# initialize hookObj
+		self.initializeHook(translationControls[0])
 
 		# setup stretchy joint segement
 		for index in range(len(joints) - 1):
@@ -239,6 +250,7 @@ class Blueprint:
 		constrainedGrp = nodes[2]
 
 		mc.parent(constrainedGrp, self.orientationControlGrp, relative=True)
+		mc.parent(self.orientationControlGrp, self.moduleGrp, relative=True)
 		parentJoint_noNs = utils.stripAllNamespaces(parentJoint)[1]
 		attrName = parentJoint_noNs + '_orientation'
 		#childJoint_noNs= utils.stripAllNamespaces(child)[1]
@@ -461,3 +473,99 @@ class Blueprint:
 		mc.container(moduleContainer, e=True, publishAndBind=[settingsLoc+'.creationPoseWeight', 'creationPoseWeight'])
 
 		mc.lockNode(moduleContainer, lock=True, lockUnpublished=True)
+
+	def Ui(self, bpUi_instance, parentColumnLayout):
+		self.bpUi_instance = bpUi_instance
+		self.parentColumnLayout = parentColumnLayout
+		self.Ui_custom()
+
+	def createRotationOrderUiControl(self, joint):
+		if mc.objExists(joint):
+			jointName = utils.stripAllNamespaces(joint)[1]
+			attrControlGrp = mc.attrControlGrp(attribute=joint+'.rotateOrder', label=jointName)
+
+	def delete(self):
+		mc.lockNode(self.containerName, lock=False, lockUnpublished=False)
+		mc.delete(self.containerName)
+		mc.namespace(setNamespace=':')
+		mc.namespace(removeNamespace=self.moduleNamespace)
+
+	def renameModuleInstance(self, newName):
+		if newName == self.userSpecifiedName:
+			return True
+		if utils.doesBpUserSpecifiedNameExist(newName):
+			mc.confirmDialog(title='Name Conflict', 
+							message='Name "' + newName + '" already exists.\n Aborting',
+							button=['Accept'], ds='Accept')
+			return False
+		else:
+			# create the new namespace, copy 
+			newNamespace = self.moduleName + '__' + newName
+			mc.lockNode(self.containerName, lock=False, lockUnpublished=False)
+			
+			mc.namespace(setNamespace=':')
+			mc.namespace(add=newNamespace)
+			mc.namespace(setNamespace=':')
+			mc.namespace(moveNamespace=[self.moduleNamespace, newNamespace])
+			mc.namespace(removeNamespace=self.moduleNamespace)
+
+			self.moduleNamespace = newNamespace
+			self.containerName = self.moduleNamespace + ':module_container'
+			mc.lockNode(self.containerName, lock=True, lockUnpublished=True)
+
+	def initializeHook(self, sRootTranslationControl):
+		unHookedLoc = mc.spaceLocator(n=self.moduleNamespace+':unhooked_loc')[0]
+		mc.pointConstraint(sRootTranslationControl, unHookedLoc, offset=[0.0,0.0001,0.0])
+		mc.setAttr(unHookedLoc+'.v', 0)
+		if self.hookObject == None:
+			self.hookObject = unHookedLoc
+
+		# create the hookRootJoint and hookTargetJoint joints in the correct world positions
+		mc.select(cl=True)
+		rootPos = mc.xform(sRootTranslationControl, q=True, ws=True, t=True)
+		targetPos = mc.xform(self.hookObject, q=True, ws=True, t=True)
+		hookRootJointWithoutNamespace = 'hook_root_joint'
+		hookRootJoint = mc.joint(n=self.moduleNamespace+':'+hookRootJointWithoutNamespace, p=rootPos)
+		#mc.setAttr(hookRootJoint+'.v', 0)
+		hookTargetJointWithoutNamespace = 'hook_target_joint'
+		hookTargetJoint = mc.joint(n=self.moduleNamespace+':'+hookTargetJointWithoutNamespace, p=targetPos)
+		#mc.setAttr(hookTargetJoint+'.v', 0)
+
+		mc.joint(hookRootJoint, e=True, orientJoint='xyz', sao='yup')
+		# organize the hook nodes and contain everything
+		hookGrp = mc.group([hookRootJoint, unHookedLoc], n=self.moduleNamespace+':hook_grp', parent=self.moduleGrp)
+		hookContainer = mc.container(n=self.moduleNamespace+':hook_container')
+		utils.addNodeToContainer(hookContainer, hookGrp, ihb=True)
+		utils.addNodeToContainer(self.containerName, hookContainer)
+		for joint in [hookRootJoint, hookTargetJoint]:
+			jointName = utils.stripAllNamespaces(joint)[1]
+			mc.container(hookContainer, e=True, publishAndBind=[joint+'.rotate', jointName+'_R'])
+
+		# setup stretchy IK for hook system
+		dIkNodes = utils.basicStretchyIK(hookRootJoint, hookTargetJoint, hookContainer, bMinLengthLock=False)
+		ikHandle = dIkNodes['ikHandle']
+		rootLoc = dIkNodes['rootLoc']
+		endLoc = dIkNodes['endLoc']
+		pvLoc = dIkNodes['pvObj']
+
+		# constrain hook joints to initial positions
+		hookRoot_pCon = mc.pointConstraint(sRootTranslationControl, hookRootJoint, 
+							mo=False, n=hookRootJoint+'_pCon')[0]
+		hookTarget_pCon = mc.pointConstraint(self.hookObject, endLoc, mo=False, n=self.moduleNamespace+':hook_pCon')[0]
+
+		utils.addNodeToContainer(hookContainer, [hookRoot_pCon, hookTarget_pCon])
+		for node in [ikHandle, rootLoc, endLoc, pvLoc]:
+			mc.parent(node, hookGrp, absolute=True)
+			mc.setAttr(node+'.v', 0 )
+
+		# create the hook representation stretchy object
+		objectNodes = self.createStretchyObject('/ControlObjects/Blueprint/hook_representation.ma', 
+												'hook_representation_container', 
+												'hook_representation', 
+												hookRootJoint, 
+												hookTargetJoint)
+		constrainedGrp = objectNodes[2]
+		mc.parent(constrainedGrp, hookGrp, absolute=True)
+		hookRepresentationContainer = objectNodes[0]
+		mc.container(self.containerName, e=True, removeNode=hookRepresentationContainer)
+		utils.addNodeToContainer(hookContainer, hookRepresentationContainer)

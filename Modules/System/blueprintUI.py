@@ -18,13 +18,13 @@ class Blueprint_UI:
 			mc.deleteUI('bluePrintUiWindow')
 		# setup the UI window
 		windowWidth = 400
-		windowHeight = 600
+		windowHeight = 300 # 600
 		self.dUiElements['window']  = mc.window('bluePrintUiWindow', 
-									w=windowWidth, h=windowHeight, t='Blueprint UI',sizeable=True)
+									w=windowWidth, h=windowHeight, t='Blueprint UI',sizeable=False)
 		self.dUiElements['topLevelColumn']  = mc.columnLayout(adjustableColumn=True, columnAlign='center')
 
 		# setup tabs
-		tabHeight = 500
+		tabHeight = 600
 		self.dUiElements['tabs'] = mc.tabLayout(h=tabHeight, 
 								innerMarginWidth=5, 
 								innerMarginHeight=5, 
@@ -37,9 +37,9 @@ class Blueprint_UI:
 		mc.tabLayout(self.dUiElements['tabs'], e=True, tabLabelIndex=([1, 'Modules']))
 
 		# Create lock and hide buttons
+		mc.text(label='-----------\n WIWUENCWEUINWEFNDSJN')
 		mc.setParent(self.dUiElements['topLevelColumn'])
 		self.dUiElements['lockPublishColumn'] = mc.columnLayout(adj=True, columnAlign='center', rowSpacing=3)
-		mc.separator()
 		self.dUiElements['lockBtn'] = mc.button(label='Lock', command=self.lock)
 		mc.separator()
 		self.dUiElements['publishBtn'] = mc.button(label='Publish')
@@ -48,10 +48,25 @@ class Blueprint_UI:
 		# draw the window
 		mc.showWindow(self.dUiElements['window'])
 
+		# create listener script job
+		self.createScriptJob()
+
+	def createScriptJob(self):
+		# create the scriptJob which specifies the command to run every time selection changes
+		self.jobNum = mc.scriptJob(event=['SelectionChanged', 
+									self.modifySelected], 
+									runOnce=True, 
+									parent=self.dUiElements['window'])
+
+	def deleteScriptJob(self):
+		# kill the scriptJob 
+		mc.scriptJob(kill=self.jobNum)
+
 	def initializeModuleTab(self, tabHeight, tabWidth):
-		scrollHeight = tabHeight
+		bespokeScrollHeight = 120
+		scrollHeight = tabHeight - bespokeScrollHeight
 		self.dUiElements['moduleColumn'] = mc.columnLayout(adj=True, rs=3)
-		self.dUiElements['moduleFrameLayout'] = mc.frameLayout(fn='tinyBoldLabelFont', h=300,
+		self.dUiElements['moduleFrameLayout'] = mc.frameLayout(h=250,
 												collapsable=False, 
 												borderVisible=False, 
 												labelVisible=False)
@@ -74,7 +89,9 @@ class Blueprint_UI:
 											columnWidth=[1,80], 
 											adjustableColumn=2)
 		mc.text(label='Module Name :')
-		self.dUiElements['moduleName'] = mc.textField(enable=False, alwaysInvokeEnterCommandOnReturn=True)
+		self.dUiElements['moduleName'] = mc.textField(enable=False, 
+										alwaysInvokeEnterCommandOnReturn=True,
+										enterCommand=self.renameModule)
 
 
 
@@ -96,8 +113,20 @@ class Blueprint_UI:
 		self.dUiElements['deleteModuleBtn'] = mc.button(en=False, label='Delete')
 		self.dUiElements['symmetryMoveCheckBox'] = mc.checkBox(en=True, label='Symmetry Move')
 
+		# framework for module specific controls
 		mc.setParent(self.dUiElements['moduleColumn'])
+		mc.separator()
+		self.dUiElements['moduleSpecificRowColumnLayout'] = mc.rowColumnLayout(nr=1, 
+										rowAttach=[1,'both',0],
+										rowHeight=[1,bespokeScrollHeight],)
+		self.dUiElements['moduleSpecificScroll'] = mc.scrollLayout(hst=0)
+		self.dUiElements['moduleSpecificColumn'] = mc.columnLayout(columnWidth=self.scrollWidth,
+										columnAttach=['both',5], 
+										rs=2)
 
+		mc.text(label='This is\n MODULE SPECIFIC TERRITORY')
+		mc.setParent(self.dUiElements['moduleColumn'])
+		mc.separator()
 
 	def createModuleInstallButton(self, module):
 		# initialize a new instance of the module class and make a button to run it
@@ -137,11 +166,15 @@ class Blueprint_UI:
 
 		iSuffix = utils.findHighestIndex(namespaces, sBaseName) + 1
 		userSpecName = sBaseName + str(iSuffix)
+
+		# get hook object or None
+		hookObj = self.findHookObjFromSelection()
+
 		# import the module being clicked and run it's install
 		mod = __import__('Blueprint.' + module, {}, {}, [module])
 		reload(mod)	
 		moduleClass = getattr(mod, mod.CLASS_NAME)
-		moduleInstance = moduleClass(userSpecName)
+		moduleInstance = moduleClass(userSpecName, hookObj)
 		moduleInstance.install()
 
 		#moduleTransform = mod.CLASS_NAME + '__' + userSpecName + ':module_transform'
@@ -198,7 +231,7 @@ class Blueprint_UI:
 			reload(mod)
 
 			cModuleClass = getattr(mod, mod.CLASS_NAME)
-			cModuleInst = cModuleClass(sUserSpecifiedName=module[1])
+			cModuleInst = cModuleClass(module[1], None)		# (sUserSpecifiedName, hookObj)
 			dModuleInfo = cModuleInst.lockPhase1()
 			moduleInstances.append( (cModuleInst, dModuleInfo) )
 
@@ -206,8 +239,98 @@ class Blueprint_UI:
 		for module in moduleInstances:
 			module[0].lockPhase2(module[1])
 
+	def modifySelected(self, *args):
+		# script job that fires whenever a selection is changed
+		# method to allow changes to a SINGLE selected module at a time using the GUI
+		print 'SCRIPTJOB FIRED'
+		controlEnable = False
+		userSpecifiedName = ''
+		selectedNodes = mc.ls(sl=True)
+		if len(selectedNodes) <= 1:
+			# clear out variables if selection 1 or less
+			self.moduleInstance = None
+			selectedModuleNamespace = None
+			currentModuleFile = None
+
+			if len(selectedNodes) == 1:
+				# actual work is done only if selection is 1 item
+				lastSelected = selectedNodes[0]
+
+				namespaceAndNode = utils.stripLeadingNamespace(lastSelected)
+				if namespaceAndNode != None:
+					# split off the namespace and collect valid modules
+					namespace = namespaceAndNode[0]
+
+					moduleNameInfo = utils.findAllModuleNames('/Modules/Blueprint')
+					validModules = moduleNameInfo[0]
+					validModuleNames = moduleNameInfo[1]
+
+					for i, moduleName in enumerate(validModuleNames):
+						# compare valid modules and see if the selected namespace is a module or not
+						moduleNameincSuffix = moduleName + '__'
+						if namespace.find(moduleNameincSuffix) == 0:
+							currentModuleFile = validModules[i]
+							selectedModuleNamespace = namespace
+							break
 
 
+			if selectedModuleNamespace:
+				# if one object is selected and it's a valid module this code will run
+				# instance the module, and enable the UI buttons and name text field
+				controlEnable = True
+				userSpecifiedName = selectedModuleNamespace.partition('__')[2]
 
+				mod = __import__('Blueprint.' + currentModuleFile, {}, {}, [currentModuleFile])
+				reload(mod)
 
+				moduleClass = getattr(mod, mod.CLASS_NAME)
+				self.moduleInstance = moduleClass(userSpecifiedName, None)
+				print userSpecifiedName
+		else:
+			controlEnable = False
 
+		# enable (if a valid single module is selected) or disable UI elements
+		mc.button(self.dUiElements['mirrorModuleBtn'], e=True, enable=controlEnable)
+		mc.button(self.dUiElements['rehookBtn'], e=True, enable=controlEnable)
+		mc.button(self.dUiElements['constrainRootBtn'], e=True, enable=controlEnable)
+		mc.button(self.dUiElements['deleteModuleBtn'], e=True, enable=controlEnable, c=self.deleteModule)
+		mc.textField(self.dUiElements['moduleName'], e=True, enable=controlEnable, text=userSpecifiedName)
+		
+		if userSpecifiedName:
+			self.createModuleSpecificUi()
+
+		self.createScriptJob()
+
+	def createModuleSpecificUi(self):
+		existingUi = mc.columnLayout(self.dUiElements['moduleSpecificColumn'], q=True, childArray=True)
+		if existingUi:
+			mc.deleteUI(existingUi)
+
+		mc.setParent(self.dUiElements['moduleSpecificColumn'])
+
+		if self.moduleInstance:
+			self.moduleInstance.Ui(self, self.dUiElements['moduleSpecificColumn'])
+
+	def deleteModule(self, *args):
+		self.moduleInstance.delete()
+		mc.select(cl=True)
+
+	def renameModule(self, *args):
+		newName = mc.textField(self.dUiElements['moduleName'], q=True, text=True)
+
+		self.moduleInstance.renameModuleInstance(newName)
+		previousSelection = mc.ls(sl=True)
+
+		if len(previousSelection) > 0:
+			mc.select(previousSelection, r=True)
+		else:
+			mc.select(cl=True)
+
+	def findHookObjFromSelection(self, *args):
+		selected = mc.ls(sl=True, transforms=True)
+		numSelected = len(selected)
+		hookObj = None
+		if numSelected != 0:
+			hookObj = selected[numSelected - 1]
+
+		return hookObj

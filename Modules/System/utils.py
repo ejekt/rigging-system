@@ -215,3 +215,14 @@ def addNodeToContainer(sContainer, sNodesIn, includeShapes=False, ihb=False, for
 		conversionNodes.extend(node_conversionNodes)
 	nodes.extend(conversionNodes)
 	mc.container(sContainer, edit=True, addNode=nodes, ihb=ihb, includeShapes=includeShapes, force=force)
+
+def doesBpUserSpecifiedNameExist(sName):
+	mc.namespace(setNamespace=':')
+	namespaces = mc.namespaceInfo(listOnlyNamespaces=True)
+
+	names = []
+	for namespace in namespaces:
+		if namespace.find('__') != -1:
+			names.append(namespace.partition('__')[2])
+
+	return sName in names

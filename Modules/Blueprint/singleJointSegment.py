@@ -13,16 +13,21 @@ ICON = os.environ["RIGGING_TOOL_ROOT"] + '/Icons/_singleJointSeg.xpm'
 
 
 class SingleJointSegment(bp.Blueprint):
-	def __init__(self, sUserSpecifiedName):
+	def __init__(self, sUserSpecifiedName, hookObj):
 
 		jointInfo = [['root_joint', [0.0,0.0,0.0]], ['end_joint',[4.0,0.0,0.0]]]
 
 		#print sUserSpecifiedName
 
-		bp.Blueprint.__init__(self, CLASS_NAME, sUserSpecifiedName, jointInfo)
+		bp.Blueprint.__init__(self, CLASS_NAME, sUserSpecifiedName, jointInfo, hookObj)
 
 	def install_custom(self, joints):
 		self.orientationControl = self.createOrientationControl(joints[0], joints[1])
+
+	def Ui_custom(self):
+		mc.setParent(self.parentColumnLayout)
+		joints = self.getJoints()
+		self.createRotationOrderUiControl(joints[0])
 
 	def lockPhase1(self):
 		# gather and return all required information from this modules control object
