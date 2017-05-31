@@ -57,6 +57,7 @@ class Blueprint_UI:
 									self.modifySelected], 
 									runOnce=True, 
 									parent=self.dUiElements['window'])
+		print 'created SCRIPTJOB {}'.format(self.jobNum)
 
 	def deleteScriptJob(self):
 		# kill the scriptJob 
@@ -102,7 +103,7 @@ class Blueprint_UI:
 										rowOffset=[(1,'both',2), (2,'both',2), (3,'both',2)],
 										columnAttach=[(1,'both',3), (2,'both',2), (3,'both',3)],
 										columnWidth=[(1, columnWidth), (2, columnWidth), (3, columnWidth)])
-		self.dUiElements['rehookBtn'] = mc.button(en=False, label='Re-Hook')
+		self.dUiElements['rehookBtn'] = mc.button(en=False, label='Re-Hook', c=self.rehookModule_setup)
 		self.dUiElements['snapRootBtn'] = mc.button(en=False, label='Snap Root > Hook')
 		self.dUiElements['constrainRootBtn'] = mc.button(en=False, label='Constrain Root > Hook')
 
@@ -238,11 +239,15 @@ class Blueprint_UI:
 		# LOCK PHASE 2
 		for module in moduleInstances:
 			module[0].lockPhase2(module[1])
+		# LOCK PHASE 3
+		for module in moduleInstances:
+			hookObject = module[1]['hookObject']
+			module[0].lockPhase3(hookObject)
+
 
 	def modifySelected(self, *args):
 		# script job that fires whenever a selection is changed
 		# method to allow changes to a SINGLE selected module at a time using the GUI
-		print 'SCRIPTJOB FIRED'
 		controlEnable = False
 		userSpecifiedName = ''
 		selectedNodes = mc.ls(sl=True)
@@ -285,17 +290,15 @@ class Blueprint_UI:
 
 				moduleClass = getattr(mod, mod.CLASS_NAME)
 				self.moduleInstance = moduleClass(userSpecifiedName, None)
-				print userSpecifiedName
-		else:
-			controlEnable = False
 
-		# enable (if a valid single module is selected) or disable UI elements
-		mc.button(self.dUiElements['mirrorModuleBtn'], e=True, enable=controlEnable)
-		mc.button(self.dUiElements['rehookBtn'], e=True, enable=controlEnable)
-		mc.button(self.dUiElements['constrainRootBtn'], e=True, enable=controlEnable)
-		mc.button(self.dUiElements['deleteModuleBtn'], e=True, enable=controlEnable, c=self.deleteModule)
-		mc.textField(self.dUiElements['moduleName'], e=True, enable=controlEnable, text=userSpecifiedName)
-		
+
+			# enable (if a valid single module is selected) or disable UI elements
+			mc.button(self.dUiElements['mirrorModuleBtn'], e=True, enable=controlEnable)
+			mc.button(self.dUiElements['rehookBtn'], e=True, enable=controlEnable)
+			mc.button(self.dUiElements['constrainRootBtn'], e=True, enable=controlEnable)
+			mc.button(self.dUiElements['deleteModuleBtn'], e=True, enable=controlEnable, c=self.deleteModule)
+			mc.textField(self.dUiElements['moduleName'], e=True, enable=controlEnable, text=userSpecifiedName)
+			
 		if userSpecifiedName:
 			self.createModuleSpecificUi()
 
@@ -332,5 +335,35 @@ class Blueprint_UI:
 		hookObj = None
 		if numSelected != 0:
 			hookObj = selected[numSelected - 1]
-
 		return hookObj
+
+	def rehookModule_setup(self, *args):
+		# gets called by the gui re-hook button
+		print '\n# Start Rehook setup'
+		selectedNodes = mc.ls(sl=True, transforms=True)
+		if len(selectedNodes) == 2:
+			# if 2 objects are selected find the hook object from selected and run instance.rehook()
+			newHook = self.findHookObjFromSelection()
+			self.moduleInstance.rehook(newHook)
+			self.createScriptJob()
+		else:
+			# if anything but 2 are selected, prompt user for a new selection
+			self.deleteScriptJob()
+			currentSelection = mc.ls(sl=True)
+			mc.headsUpMessage('Please select the translation control you wish to re-hook to.\n Clear selection to un-hook')
+			# run rehookModule_callback() as soon as the selection changes
+			mc.scriptJob(event=['SelectionChanged', 
+						partial(self.rehookModule_callback, currentSelection)], 
+						runOnce=True)
+
+	def rehookModule_callback(self, currentSelection):
+		# called if selection is not 2
+		newHook = self.findHookObjFromSelection()
+		self.moduleInstance.rehook(newHook)
+		# reset to the previous selection if possible
+		try:
+			mc.select(currentSelection, r=True)
+		except:
+			pass
+		self.createScriptJob()
+

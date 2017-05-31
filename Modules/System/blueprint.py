@@ -22,7 +22,6 @@ class Blueprint:
 			partitionInfo = sHookObj.rpartition('_translation_control')
 			if partitionInfo[1] != '' and partitionInfo[2] == '':
 				self.hookObject = sHookObj
-		print self.hookObject
 
 		print 'init module namespace: ', self.moduleNamespace
 
@@ -30,21 +29,6 @@ class Blueprint:
 	def install_custom(self, joints):
 		print "install_custom() isn't implemented"
 
-
-	def lockPhase1(self):
-		# gather and return all required information from this modules control object
-		# jointPositions = list of joint positions from the root down the hierarchy
-		# jointOrientations = list of orientations or a list of axis information
-		#			# these are passed as a touple: (orientations,None) or (None, axisInfo)
-		# jointRotationOrder = list of joint rotation order (intger values gathered with getAttr)
-		# jointPreferredAngles = a list of jiont preferred angles, optional (can pass None)
-		# hookObject = self.findHookObjectForLock()
-		# rootTransform = a bool, either True or False. True = T,R,S on root joint. False = R only
-		# 
-		# moduleInfo = (jointPositions, jointOrientations, jointRotationOrder, jointPreferredAngles, hookObject, rootTransform)
-		# return moduleInfo
-
-		return None
 	def Ui_custom(self):
 		print 'no custom ui - this is ok'
 
@@ -299,6 +283,26 @@ class Blueprint:
 
 		return (orientationVal, newCleanParent)
 
+	#
+	#		LOCKING PHASES
+	#
+
+	def lockPhase1(self):
+		# gather and return all required information from this modules control object
+		# jointPositions = list of joint positions from the root down the hierarchy
+		# jointOrientations = list of orientations or a list of axis information
+		#			# these are passed as a touple: (orientations,None) or (None, axisInfo)
+		# jointRotationOrder = list of joint rotation order (intger values gathered with getAttr)
+		# jointPreferredAngles = a list of jiont preferred angles, optional (can pass None)
+		# hookObject = self.findHookObjectForLock()
+		# rootTransform = a bool, either True or False. True = T,R,S on root joint. False = R only
+		# 
+		# moduleInfo = (jointPositions, jointOrientations, jointRotationOrder, jointPreferredAngles, hookObject, rootTransform)
+		# return moduleInfo
+
+		return None
+
+
 	def lockPhase2(self, dModuleInfo):
 		jointPositions = dModuleInfo['jointPositions']
 		numJoints = len(jointPositions)
@@ -394,6 +398,11 @@ class Blueprint:
 		# Creation Pose Weight network
 		mc.select(bpGrp, replace=True)
 		mc.addAttr(ln='controlModulesInstalled', at='bool', dv=0, k=False)
+		# grouping module all new blueprint and creationPose nodes to a new hook grp
+		hookGrp = mc.group(em=True, n=self.moduleNamespace+':HOOK_IN')
+		for obj in [bpGrp, creationPoseGrp]:
+			mc.parent(obj, hookGrp, absolute=True)
+		# module SETTINGS locator
 		settingsLoc = mc.spaceLocator(n=self.moduleNamespace+':SETTINGS')[0]
 		mc.setAttr(settingsLoc+'.v', 0)
 		mc.select(settingsLoc, replace=True)
@@ -457,22 +466,47 @@ class Blueprint:
 		bpNodes.append(bpGrp)
 		bpNodes.append(creationPoseGrp)
 
+		# create containers and contain the nodes
 		bpContainer = mc.container(n=self.moduleNamespace+':bp_container')
 		utils.addNodeToContainer(bpContainer, bpNodes, ihb=True)
 
 		moduleGrp = mc.group(em=True, name=self.moduleNamespace+':module_grp')
-		mc.parent(settingsLoc, moduleGrp, absolute=True)
+		for obj in [hookGrp, settingsLoc]:
+			mc.parent(obj, moduleGrp, absolute=True)
 
-		# temp
-		for group in [bpGrp, creationPoseGrp]:
-			mc.parent(group, moduleGrp, absolute=True)
 		moduleContainer = mc.container(n=self.moduleNamespace+':module_container')
-		utils.addNodeToContainer(moduleContainer, [moduleGrp, settingsLoc, bpContainer], includeShapes=True)
+		utils.addNodeToContainer(moduleContainer, [moduleGrp, hookGrp, settingsLoc, bpContainer], includeShapes=True)
 
 		mc.container(moduleContainer, e=True, publishAndBind=[settingsLoc+'.activeModule', 'activeModule'])
 		mc.container(moduleContainer, e=True, publishAndBind=[settingsLoc+'.creationPoseWeight', 'creationPoseWeight'])
 
-		mc.lockNode(moduleContainer, lock=True, lockUnpublished=True)
+		# add attribute to inherit hierarchical scale values
+		mc.select(moduleGrp)
+		mc.addAttr(at='float', ln='hierarchicalScale')
+		mc.connectAttr(hookGrp+'.scaleY', moduleGrp+'.hierarchicalScale')
+
+	def lockPhase3(self, hookObj):
+
+		if hookObj:
+			hookObjModuleName = utils.stripLeadingNamespace(hookObj)
+			hookObjModule = hookObjModuleName[0]
+			hookObjJoint = hookObjModuleName[1].split('_translation_control')[0]
+
+			hookObj = hookObjModule + ':bp_' + hookObjJoint
+			
+			parentConst = mc.parentConstraint(hookObj, self.moduleNamespace+':HOOK_IN', 
+												mo=True, 
+												n=self.moduleNamespace+':hook_parCon')[0]
+			scaleConst = mc.scaleConstraint(hookObj, self.moduleNamespace+':HOOK_IN', 
+												mo=True, 
+												n=self.moduleNamespace+':hook_scaCon')[0]
+			utils.addNodeToContainer(self.containerName, [parentConst, scaleConst])
+
+		mc.lockNode(self.containerName, lock=True, lockUnpublished=True)
+
+	#
+	#			UI TOOLS
+	#
 
 	def Ui(self, bpUi_instance, parentColumnLayout):
 		self.bpUi_instance = bpUi_instance
@@ -513,6 +547,7 @@ class Blueprint:
 			self.containerName = self.moduleNamespace + ':module_container'
 			mc.lockNode(self.containerName, lock=True, lockUnpublished=True)
 
+	#			HOOKING MODULES TOGETHER
 	def initializeHook(self, sRootTranslationControl):
 		unHookedLoc = mc.spaceLocator(n=self.moduleNamespace+':unhooked_loc')[0]
 		mc.pointConstraint(sRootTranslationControl, unHookedLoc, offset=[0.0,0.0001,0.0])
@@ -526,10 +561,10 @@ class Blueprint:
 		targetPos = mc.xform(self.hookObject, q=True, ws=True, t=True)
 		hookRootJointWithoutNamespace = 'hook_root_joint'
 		hookRootJoint = mc.joint(n=self.moduleNamespace+':'+hookRootJointWithoutNamespace, p=rootPos)
-		#mc.setAttr(hookRootJoint+'.v', 0)
+		mc.setAttr(hookRootJoint+'.v', 0)
 		hookTargetJointWithoutNamespace = 'hook_target_joint'
 		hookTargetJoint = mc.joint(n=self.moduleNamespace+':'+hookTargetJointWithoutNamespace, p=targetPos)
-		#mc.setAttr(hookTargetJoint+'.v', 0)
+		mc.setAttr(hookTargetJoint+'.v', 0)
 
 		mc.joint(hookRootJoint, e=True, orientJoint='xyz', sao='yup')
 		# organize the hook nodes and contain everything
@@ -551,7 +586,8 @@ class Blueprint:
 		# constrain hook joints to initial positions
 		hookRoot_pCon = mc.pointConstraint(sRootTranslationControl, hookRootJoint, 
 							mo=False, n=hookRootJoint+'_pCon')[0]
-		hookTarget_pCon = mc.pointConstraint(self.hookObject, endLoc, mo=False, n=self.moduleNamespace+':hook_pCon')[0]
+		hookTarget_pCon = mc.pointConstraint(self.hookObject, endLoc, 
+							mo=False, n=self.moduleNamespace+':hook_pCon')[0]
 
 		utils.addNodeToContainer(hookContainer, [hookRoot_pCon, hookTarget_pCon])
 		for node in [ikHandle, rootLoc, endLoc, pvLoc]:
@@ -569,3 +605,51 @@ class Blueprint:
 		hookRepresentationContainer = objectNodes[0]
 		mc.container(self.containerName, e=True, removeNode=hookRepresentationContainer)
 		utils.addNodeToContainer(hookContainer, hookRepresentationContainer)
+
+	def rehook(self, sNewHook):
+		# input argument is either from findHookObjFromSelection() or None
+		# First it figures out current module hook object using findHookObject()
+		oldHookObject = self.findHookObject()
+		# in case of None it will be assigned the current module unhooked_loc
+		self.hookObject = self.moduleNamespace+':unhooked_loc'
+		if sNewHook:
+			# is the new hook a translation_control?
+			# confirm it's a translation_control not in the same module
+			if sNewHook.find('_translation_control') != -1:
+				splitString = sNewHook.split('_translation_control')
+				if splitString[1] == '':
+					if utils.stripLeadingNamespace(sNewHook)[0] != self.moduleNamespace:
+						self.hookObject = sNewHook
+
+		# as long as the new hook object is different than the old switch up the 
+		# hook constraints point constraint connections
+		if self.hookObject != oldHookObject:
+			mc.lockNode(self.containerName, lock=False, lockUnpublished=False)
+			hookConstraint = self.moduleNamespace+':hook_pCon'
+			mc.connectAttr(self.hookObject+'.parentMatrix[0]', 
+							hookConstraint+'.target[0].targetParentMatrix', f=True)
+			mc.connectAttr(self.hookObject+'.translate', 
+							hookConstraint+'.target[0].targetTranslate', f=True)
+			mc.connectAttr(self.hookObject+'.rotatePivot', 
+							hookConstraint+'.target[0].targetRotatePivot', f=True)
+			mc.connectAttr(self.hookObject+'.rotatePivotTranslate', 
+							hookConstraint+'.target[0].targetRotateTranslate', f=True)
+			mc.lockNode(self.containerName, lock=True, lockUnpublished=True)
+		print 're-hooked from [{}] to \n\t[{}]'.format(oldHookObject, self.hookObject)
+		return self.hookObject
+
+	def findHookObject(self):
+		# we know the constraint name. so find what it's connected to. That is the hook.
+		hookConstraint = self.moduleNamespace+':hook_pCon'
+		sourceAttr = mc.connectionInfo(hookConstraint+'.target[0].targetParentMatrix', 
+							sourceFromDestination=True, )
+		sourceNode = str(sourceAttr).rpartition('.')[0]
+		return sourceNode
+
+	def findHookObjectForLock(self):
+		hookObject = self.findHookObject() 
+		if hookObject == self.moduleNamespace+':unhooked_loc':
+			hookObject = None
+		else:
+			self.rehook(None)
+		return hookObject

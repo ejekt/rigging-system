@@ -61,7 +61,7 @@ class SingleJointSegment(bp.Blueprint):
 		jointRotationOrder.append(mc.getAttr(joints[0]+'.rotateOrder'))
 
 		jointPreferredAngles = None
-		hookObject = None
+		hookObject = self.findHookObjectForLock()
 		rootTransform = False
 
 		# moduleInfo = jointPositions, jointOrientations, jointRotationOrder, jointPreferredAngles, hookObject, rootTransform)
