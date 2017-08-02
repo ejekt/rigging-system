@@ -10,7 +10,6 @@ reload(utils)
 class Blueprint_UI:
 	def __init__(self):
 		#build the window and run initilizeModuleTab
-		print 'We are in the Blueprint_UI'
 
 		self.dUiElements = {}
 
@@ -103,13 +102,21 @@ class Blueprint_UI:
 										rowOffset=[(1,'both',2), (2,'both',2), (3,'both',2)],
 										columnAttach=[(1,'both',3), (2,'both',2), (3,'both',3)],
 										columnWidth=[(1, columnWidth), (2, columnWidth), (3, columnWidth)])
-		self.dUiElements['rehookBtn'] = mc.button(en=False, label='Re-Hook', c=self.rehookModule_setup)
-		self.dUiElements['snapRootBtn'] = mc.button(en=False, label='Snap Root > Hook')
-		self.dUiElements['constrainRootBtn'] = mc.button(en=False, label='Constrain Root > Hook')
-
-		self.dUiElements['groupSelectedBtn'] = mc.button(en=False, label='Group Selected')
-		self.dUiElements['ungroupBtn'] = mc.button(en=False, label='Ungroup')
-		self.dUiElements['mirrorModuleBtn'] = mc.button(en=False, label='Mirror Module')
+		# row1
+		self.dUiElements['rehookBtn'] = mc.button(en=False, label='Re-Hook', 
+							c=self.rehookModule_setup)
+		self.dUiElements['snapRootBtn'] = mc.button(en=False, label='Snap Root > Hook', 
+							c=self.snapRootToHook)
+		self.dUiElements['constrainRootBtn'] = mc.button(en=False, label='Constrain Root > Hook', 
+							c=self.constrainRootToHook)
+		# row2
+		self.dUiElements['groupSelectedBtn'] = mc.button(en=True, label='Group Selected',
+							c=self.groupSelected)
+		self.dUiElements['ungroupBtn'] = mc.button(en=False, label='Ungroup',
+							c=self.ungroupSelected)
+		self.dUiElements['mirrorModuleBtn'] = mc.button(en=False, label='Mirror Module',
+							c=self.mirrorSelection)
+		# row3
 		mc.text(label='')
 		self.dUiElements['deleteModuleBtn'] = mc.button(en=False, label='Delete')
 		self.dUiElements['symmetryMoveCheckBox'] = mc.checkBox(en=True, label='Symmetry Move')
@@ -239,12 +246,18 @@ class Blueprint_UI:
 		# LOCK PHASE 2
 		for module in moduleInstances:
 			module[0].lockPhase2(module[1])
+		# delete group nodes and containers if they exist
+		groupContainer = 'group_container'
+		if mc.objExists(groupContainer):
+			mc.lockNode(groupContainer, lock=False, lockUnpublished=False)
+			mc.delete(groupContainer)
 		# LOCK PHASE 3
 		for module in moduleInstances:
 			hookObject = module[1]['hookObject']
 			module[0].lockPhase3(hookObject)
 
 
+	# SCRIPTJOB EVERYTIME SELECTION CHANGES
 	def modifySelected(self, *args):
 		# script job that fires whenever a selection is changed
 		# method to allow changes to a SINGLE selected module at a time using the GUI
@@ -256,10 +269,19 @@ class Blueprint_UI:
 			self.moduleInstance = None
 			selectedModuleNamespace = None
 			currentModuleFile = None
+			# deactivate the ungroup button
+			mc.button(self.dUiElements['ungroupBtn'], e=True, enable=False)
+			mc.button(self.dUiElements['mirrorModuleBtn'], e=True, enable=False)
+			mc.button(self.dUiElements['groupSelectedBtn'], e=True, enable=False)
 
 			if len(selectedNodes) == 1:
 				# actual work is done only if selection is 1 item
 				lastSelected = selectedNodes[0]
+				# activate ungroup button if selection is a group__
+				if lastSelected.find('Group__') == 0:
+					mc.button(self.dUiElements['ungroupBtn'], e=True, enable=True)
+					mc.button(self.dUiElements['mirrorModuleBtn'], e=True, enable=True, l='Mirror Group')
+					mc.button(self.dUiElements['groupSelectedBtn'], e=True, enable=True)
 
 				namespaceAndNode = utils.stripLeadingNamespace(lastSelected)
 				if namespaceAndNode != None:
@@ -278,6 +300,8 @@ class Blueprint_UI:
 							selectedModuleNamespace = namespace
 							break
 
+			constrainCommand = self.constrainRootToHook
+			constrainLabel = 'Constrain Root > Hook'
 
 			if selectedModuleNamespace:
 				# if one object is selected and it's a valid module this code will run
@@ -290,13 +314,23 @@ class Blueprint_UI:
 
 				moduleClass = getattr(mod, mod.CLASS_NAME)
 				self.moduleInstance = moduleClass(userSpecifiedName, None)
+				
+				mc.button(self.dUiElements['mirrorModuleBtn'], e=True, enable=True, l='Mirror Module')
+				mc.button(self.dUiElements['groupSelectedBtn'], e=True, enable=controlEnable)
+
+				if self.moduleInstance.isRootConstrained():
+					constrainCommand = self.unConstrainRootFromHook
+					constrainLabel = 'Unconstrain Root'
 
 
 			# enable (if a valid single module is selected) or disable UI elements
-			mc.button(self.dUiElements['mirrorModuleBtn'], e=True, enable=controlEnable)
 			mc.button(self.dUiElements['rehookBtn'], e=True, enable=controlEnable)
-			mc.button(self.dUiElements['constrainRootBtn'], e=True, enable=controlEnable)
+			#mc.button(self.dUiElements['groupSelectedBtn'], e=True, enable=controlEnable)
+			mc.button(self.dUiElements['constrainRootBtn'], e=True, enable=controlEnable, 
+										c=constrainCommand, label=constrainLabel)
 			mc.button(self.dUiElements['deleteModuleBtn'], e=True, enable=controlEnable, c=self.deleteModule)
+			mc.button(self.dUiElements['snapRootBtn'], e=True, enable=controlEnable, c=self.snapRootToHook)
+
 			mc.textField(self.dUiElements['moduleName'], e=True, enable=controlEnable, text=userSpecifiedName)
 			
 		if userSpecifiedName:
@@ -304,6 +338,10 @@ class Blueprint_UI:
 
 		self.createScriptJob()
 
+
+
+
+	# GENERIC MODULE TOOLS
 	def createModuleSpecificUi(self):
 		existingUi = mc.columnLayout(self.dUiElements['moduleSpecificColumn'], q=True, childArray=True)
 		if existingUi:
@@ -329,6 +367,7 @@ class Blueprint_UI:
 		else:
 			mc.select(cl=True)
 
+	# HOOK TOOLS
 	def findHookObjFromSelection(self, *args):
 		selected = mc.ls(sl=True, transforms=True)
 		numSelected = len(selected)
@@ -367,3 +406,39 @@ class Blueprint_UI:
 			pass
 		self.createScriptJob()
 
+	def snapRootToHook(self, *args):
+
+		self.moduleInstance.snapRootToHook()
+
+	def constrainRootToHook(self, *args):
+
+		self.moduleInstance.constrainRootToHook()
+		# toggle button to unconstrain
+		mc.button(self.dUiElements['constrainRootBtn'], e=True, label='Unconstrain Root',
+					c=self.unConstrainRootFromHook)
+
+	def unConstrainRootFromHook(self, *args):
+
+		self.moduleInstance.unConstrainRootFromHook()
+		mc.button(self.dUiElements['constrainRootBtn'], e=True, label='Constrain Root > Root',
+					c=self.constrainRootToHook)
+
+	# GROUPING AND UNGROUPING
+	def groupSelected(self, *args):
+		import System.groupSelected as groupSelected
+		reload(groupSelected)
+
+		groupSelected.GroupSelected().showUI()
+
+	def ungroupSelected(self, *args):
+		import System.groupSelected as groupSelected
+		reload(groupSelected)
+
+		groupSelected.UngroupSelected()
+
+	# MIRRORING
+	def mirrorSelection(self, *args):
+		import System.mirrorModule as mirrorModule
+		reload(mirrorModule)
+
+		mirrorModule.MirrorModule()

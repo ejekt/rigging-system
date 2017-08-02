@@ -23,6 +23,8 @@ class Blueprint:
 			if partitionInfo[1] != '' and partitionInfo[2] == '':
 				self.hookObject = sHookObj
 
+		self.canBeMirrored = True
+
 		print 'init module namespace: ', self.moduleNamespace
 
 	# Methods intended for overriding by derived classes
@@ -520,9 +522,48 @@ class Blueprint:
 
 	def delete(self):
 		mc.lockNode(self.containerName, lock=False, lockUnpublished=False)
+		# Gather all modules in directory
+		validModuleInfo = utils.findAllModuleNames('/Modules/Blueprint')
+		validModules = validModuleInfo[0]
+		validModuleNames = validModuleInfo[1]
+
+		hookedModulesSet = set()
+		for jointInfo in self.jointInfo:
+			joint = jointInfo[0]
+			translationControl = self.getTranslationControl(self.moduleNamespace+':'+joint)
+			connections = mc.listConnections(translationControl)
+			for connection in connections:
+				moduleInstance = utils.stripLeadingNamespace(connection)
+				if moduleInstance:
+					splitString = moduleInstance[0].partition('__')			
+					# only blueprint modules have double underscore
+					if moduleInstance[0] != self.moduleNamespace and splitString[0] in validModuleNames:
+						index = validModuleNames.index(splitString[0])
+						hookedModulesSet.add( (validModules[index], splitString[2]))
+		for module in hookedModulesSet:
+			mod = __import__('Blueprint.' + module[0], {}, {}, [module[0]])
+			reload(mod)	
+			moduleClass = getattr(mod, mod.CLASS_NAME)
+			moduleInstance = moduleClass(module[1], None)
+			moduleInstance.rehook(None)
+
+		moduleTransform = self.moduleNamespace + ':module_transform'
+		moduleTransformParent = mc.listRelatives(moduleTransform, parent=True)
+
 		mc.delete(self.containerName)
 		mc.namespace(setNamespace=':')
 		mc.namespace(removeNamespace=self.moduleNamespace)
+
+		# for cases when we delete the last remaining module in a group
+		if moduleTransformParent:
+			parentGroup = moduleTransformParent[0]
+			children = mc.listRelatives(parentGroup, children=True)
+			children = mc.ls(children, transforms=True)
+			if len(children) == 0:
+				mc.select(parentGroup, r=True)
+				import System.groupSelected as groupSelected
+				reload(groupSelected)
+				groupSelected.UngroupSelected()
 
 	def renameModuleInstance(self, newName):
 		if newName == self.userSpecifiedName:
@@ -547,7 +588,7 @@ class Blueprint:
 			self.containerName = self.moduleNamespace + ':module_container'
 			mc.lockNode(self.containerName, lock=True, lockUnpublished=True)
 
-	#			HOOKING MODULES TOGETHER
+	#		HOOKING MODULES TOGETHER
 	def initializeHook(self, sRootTranslationControl):
 		unHookedLoc = mc.spaceLocator(n=self.moduleNamespace+':unhooked_loc')[0]
 		mc.pointConstraint(sRootTranslationControl, unHookedLoc, offset=[0.0,0.0001,0.0])
@@ -624,6 +665,7 @@ class Blueprint:
 		# as long as the new hook object is different than the old switch up the 
 		# hook constraints point constraint connections
 		if self.hookObject != oldHookObject:
+			self.unConstrainRootFromHook()
 			mc.lockNode(self.containerName, lock=False, lockUnpublished=False)
 			hookConstraint = self.moduleNamespace+':hook_pCon'
 			mc.connectAttr(self.hookObject+'.parentMatrix[0]', 
@@ -653,3 +695,56 @@ class Blueprint:
 		else:
 			self.rehook(None)
 		return hookObject
+
+	def snapRootToHook(self):
+		rootControl = self.getTranslationControl(self.moduleNamespace+':'+self.jointInfo[0][0])
+		hookObject = self.findHookObject()
+		# check that the hook object is not the unhooked locator
+		if hookObject == self.moduleNamespace+':unhooked_loc':
+			return
+		# snap the root control to the hook position
+		hookObjectPos = mc.xform(hookObject, q=True, ws=True, t=True)
+		mc.xform(rootControl, absolute=True, ws=True, t=hookObjectPos)
+		mc.select(rootControl, r=True)
+
+	def constrainRootToHook(self):
+		rootControl = self.getTranslationControl(self.moduleNamespace+':'+self.jointInfo[0][0])
+		hookObject = self.findHookObject()
+		# check that the hook object is not the unhooked locator
+		if hookObject == self.moduleNamespace+':unhooked_loc':
+			return
+		# point constrain the control to the hook, lock it's translate and turn off it's visibility
+		mc.lockNode(self.containerName, lock=False, lockUnpublished=False)
+		mc.pointConstraint(hookObject, rootControl, mo=False, n=rootControl+'_hookConstraint')
+		mc.setAttr(rootControl+'.t', l=True)
+		mc.setAttr(rootControl+'.v', l=False)
+		mc.setAttr(rootControl+'.v', 0)
+		mc.setAttr(rootControl+'.v', l=True)
+		mc.select(cl=True)
+		mc.lockNode(self.containerName, lock=True, lockUnpublished=True)
+
+	def unConstrainRootFromHook(self):
+		mc.lockNode(self.containerName, lock=False, lockUnpublished=False)
+		# get the root control of active module
+		rootControl = self.getTranslationControl(self.moduleNamespace+':'+self.jointInfo[0][0])
+		rootControl_hookConstraint = rootControl+'_hookConstraint'
+		# if a rootControl hook constraint exists, delete it, and set the control to visible and unlocked
+		if mc.objExists(rootControl_hookConstraint):
+			mc.delete(rootControl_hookConstraint)
+			mc.setAttr(rootControl+'.t', l=False)
+			mc.setAttr(rootControl+'.v', l=False)
+			mc.setAttr(rootControl+'.v', 1)
+			mc.setAttr(rootControl+'.v', l=True)
+			# select the newly unconstrainted rootControl and activate move tool
+			mc.select(rootControl, r=True)
+			mc.setToolTo('moveSuperContext')
+
+		mc.lockNode(self.containerName, lock=True, lockUnpublished=True)
+
+	def isRootConstrained(self):
+		rootControl = self.getTranslationControl(self.moduleNamespace+':'+self.jointInfo[0][0])
+		rootControl_hookConstraint = rootControl+'_hookConstraint'
+		return (mc.objExists(rootControl_hookConstraint))
+
+	def canModuleBeMirrored(self):
+		return self.canBeMirrored

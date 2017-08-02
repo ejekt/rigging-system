@@ -74,7 +74,7 @@ def checkNamespaceIndex(sBaseName):
 
 def stripLeadingNamespace(sNode):
 	if str(sNode).find(':') == -1:
-		return none
+		return None
 
 	splitString = str(sNode).partition(':')
 
