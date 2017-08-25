@@ -131,7 +131,7 @@ def basicStretchyIK(sRootJoint,
 		containedNodes.append(poleVectorObj)
 		mc.xform(poleVectorObj, ws=True, absolute=True, t=mc.xform(sRootJoint, q=True, ws=True, t=True))
 		mc.xform(poleVectorObj, ws=True, r=True, t=[0.0,1.0,0.0])
-		mc.setAttr(poleVectorObj+'.v', 0)
+		#mc.setAttr(poleVectorObj+'.v', 0)
 
 	pvConstraint = mc.poleVectorConstraint(poleVectorObj, ikHandle)[0]
 	containedNodes.append(pvConstraint)

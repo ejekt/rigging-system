@@ -25,15 +25,25 @@ class Blueprint:
 
 		self.canBeMirrored = True
 
+		self.mirrored = False
+
 		print 'init module namespace: ', self.moduleNamespace
 
+	###############################################################################################
 	# Methods intended for overriding by derived classes
 	def install_custom(self, joints):
 		print "install_custom() isn't implemented"
 
+
 	def Ui_custom(self):
 		print 'no custom ui - this is ok'
 
+
+	def mirror_custom(self, sOriginalModule):
+		print 'mirror_custom() method is not implemented by derived class'
+
+
+	###############################				BASE CLASS 				###########################
 	# Baseclass Methods
 	def install(self):
 		print '\n== MODULE install class {} using namespace {}'.format(self.moduleName, self.moduleNamespace)
@@ -74,8 +84,49 @@ class Blueprint:
 			if index > 0:
 				mc.joint(parentJoint, edit=True, orientJoint='xyz', sao='yup')
 
-
 			index += 1
+
+		###			INSTALLING A MIRRORED MODULE
+		# when installing mirrored joints
+		if self.mirrored:
+			mirrorXY = False
+			mirrorYZ = False
+			mirrorXZ = False
+			if self.mirrorPlane == 'XY':
+				mirrorXY = True
+			if self.mirrorPlane == 'XZ':
+				mirrorXZ = True
+			if self.mirrorPlane == 'YZ':
+				mirrorYZ = True
+			mirrorBehavior = False
+			if self.rotationFunction == 'behavior':
+				mirrorBehavior = True
+			# mirror the joints using maya command
+			print '\t MIRRORING'
+			print mirrorBehavior
+			mirroredNodes = mc.mirrorJoint(joints[0], 
+										mirrorXY=mirrorXY, 
+										mirrorYZ=mirrorYZ, 
+										mirrorXZ=mirrorXZ, 
+										mirrorBehavior=mirrorBehavior)
+			# delete non mirrored joints
+			mc.delete(joints)
+			# delete anything other than joints
+			mirroredJoints = []
+			for node in mirroredNodes:
+				if mc.objectType(node, isType='joint'):
+					mirroredJoints.append(node)
+				else:
+					mc.delete(node)
+			# rename mirrored joints to install specifications
+			index = 0
+			for joint in mirroredJoints:
+				jointName = self.jointInfo[index][0]
+				newJointName = mc.rename(joint, self.moduleNamespace+':'+jointName)
+				# update it's joint info to the mirrored position
+				self.jointInfo[index][1] = mc.xform(newJointName, q=True, ws=True, t=True)
+				index += 1
+
 		mc.parent(joints[0], self.jointsGrp, absolute=True)
 
 		# prepare the parent translation control group 
@@ -101,7 +152,7 @@ class Blueprint:
 		utils.forceSceneUpdate()
 
 		# lock the container
-		mc.lockNode(self.containerName, lock=True, lockUnpublished=True)
+		#mc.lockNode(self.containerName, lock=True, lockUnpublished=True)
 
 
 	def createTranslationControlAtJoint(self, joint):
@@ -133,19 +184,21 @@ class Blueprint:
 		return jointName + '_translation_control'
 
 	def setupStretchyJointSegment(self, parentJoint, childJoint):
-		# setup 2 joints to have an IK and stretchy joint in the segment
+		''' setup 2 joints to have an IK and stretchy joint in the segment.
+		Including a pole vector constraint for the IK, a group and cnstraint so it follows the root
+		'''
 		parentTranslationControl = self.getTranslationControl(parentJoint)
 		childTranslationControl = self.getTranslationControl(childJoint)
 
-		pvLoc = mc.spaceLocator(n=parentTranslationControl+'pvLoc')[0]
-		pvLocGrp = mc.group(pvLoc, n=pvLoc+'_pConGrp')
+		# create the pole vector to pass into basicStretchyIK
+		pvLoc = mc.spaceLocator(n=parentTranslationControl+'_pvLoc')[0]
+		pvLocGrp = mc.group(pvLoc, n=pvLoc+'_pvConGrp')
 		mc.parent(pvLocGrp, self.moduleGrp, absolute=True)
 		parentConst = mc.parentConstraint(parentTranslationControl, pvLocGrp, mo=False)[0]
-		mc.setAttr(pvLoc+'.v', 0)
-		mc.setAttr(pvLoc+'.ty', -0.5)
+		#mc.setAttr(pvLoc+'.v', 0)
+		mc.setAttr(pvLoc+'.ty', -1)
 
-
-
+		# setup the IK
 		dIkNodes = utils.basicStretchyIK(parentJoint, 
 					childJoint, 
 					sContainer=self.containerName, 
@@ -157,10 +210,16 @@ class Blueprint:
 		rootLoc = dIkNodes['rootLoc']
 		endLoc = dIkNodes['endLoc']
 
+		# when mirroring o er the origin plane we need to counter a twist of 90 Maya puts in
+		if self.mirrored:
+			if self.mirrorPlane == 'XZ':
+				mc.setAttr(ikHandle+'.twist', 90)
+
+
+		# constrain the IK end locator to the child translation control, so the IK can stretch
 		child_pCon = mc.pointConstraint(childTranslationControl, endLoc, mo=False, n=endLoc+'_pCon')[0]
-
 		utils.addNodeToContainer(self.containerName, [pvLocGrp,child_pCon], ihb=True)
-
+		# organize IK nodes into joints grp
 		for node in [ikHandle, rootLoc, endLoc]:
 			mc.parent(node, self.jointsGrp)
 			mc.setAttr(node+'.v', 0)
@@ -203,11 +262,40 @@ class Blueprint:
 		return(objContainer, obj, constrainedGrp)
 
 	def initializeModuleTransforn(self, rootPos):
+		# import the control group file and rename to module specs
 		controlGrpFile = os.environ['RIGGING_TOOL_ROOT']+'/ControlObjects/Blueprint/controlGroup_control.ma'
 		mc.file(controlGrpFile, i=True)
-
 		self.moduleTransform = mc.rename('controlGroup_control', self.moduleNamespace+':module_transform')
+		# move the control to the modules root position
 		mc.xform(self.moduleTransform, ws=True, absolute=True, t=rootPos)
+		
+		### 			MIRRORING CONTROLS
+		if self.mirrored:
+			# duplicate the transform control, group it, and scale in -1 to mirror it
+			duplicateTransform = mc.duplicate(self.originalModule+':module_transform', 
+											parentOnly=True,
+											name='TEMP_TRANSFORM')
+			emptyGroup = mc.group(em=True)
+			mc.parent(duplicateTransform, emptyGroup, absolute=True)
+			scaleAttr = '.sx'
+			if self.mirrorPlane == 'XZ':
+				scaleAttr = '.sy'
+			elif self.mirrorPlane == 'XY':
+				scaleAttr = '.sz'
+			mc.setAttr(emptyGroup+scaleAttr, -1)
+			# snap the transform control to the duplicated and mirrored one
+			pCon = mc.parentConstraint(duplicateTransform, self.moduleTransform, mo=False)[0]
+			mc.delete([pCon, emptyGroup])
+			# get the original modules scale and set the duplicate to that
+			tempLocator = mc.spaceLocator()[0]
+			sCon = mc.scaleConstraint(self.originalModule+':module_transform', tempLocator, mo=False)[0]
+			scale = mc.getAttr(tempLocator+'.sx')
+			mc.delete([tempLocator, sCon])
+			mc.xform(self.moduleTransform, objectSpace=True, scale=[scale,scale,scale])
+
+
+
+
 		utils.addNodeToContainer(self.containerName, self.moduleTransform, ihb=True)
 
 		# setup global scaling
@@ -330,6 +418,14 @@ class Blueprint:
 
 		hookObject = dModuleInfo['hookObject']
 		rootTransform = dModuleInfo['rootTransform']
+
+		# get mirror info if it's there
+		mirrorInfo = None
+		oldModuleGrp = self.moduleNamespace + ':module_grp'
+		if mc.attributeQuery('mirrorInfo', n=oldModuleGrp, exists=True):
+			mirrorInfo = mc.getAttr(oldModuleGrp+'.mirrorInfo')
+
+
 
 		# DELETE the blueprint controls
 		mc.lockNode(self.containerName, lock=False, lockUnpublished=False)
@@ -482,10 +578,17 @@ class Blueprint:
 		mc.container(moduleContainer, e=True, publishAndBind=[settingsLoc+'.activeModule', 'activeModule'])
 		mc.container(moduleContainer, e=True, publishAndBind=[settingsLoc+'.creationPoseWeight', 'creationPoseWeight'])
 
+		if mirrorInfo:
+			enumNames = 'none:x:y:z'
+			mc.select(moduleGrp, r=True)
+			mc.addAttr(at='enum', enumName=enumNames, ln='mirrorInfo', k=False)
+			mc.setAttr(moduleGrp+'.mirrorInfo', mirrorInfo)
+
 		# add attribute to inherit hierarchical scale values
 		mc.select(moduleGrp)
 		mc.addAttr(at='float', ln='hierarchicalScale')
 		mc.connectAttr(hookGrp+'.scaleY', moduleGrp+'.hierarchicalScale')
+
 
 	def lockPhase3(self, hookObj):
 
@@ -527,6 +630,7 @@ class Blueprint:
 		validModules = validModuleInfo[0]
 		validModuleNames = validModuleInfo[1]
 
+		# get hooked modules
 		hookedModulesSet = set()
 		for jointInfo in self.jointInfo:
 			joint = jointInfo[0]
@@ -540,12 +644,23 @@ class Blueprint:
 					if moduleInstance[0] != self.moduleNamespace and splitString[0] in validModuleNames:
 						index = validModuleNames.index(splitString[0])
 						hookedModulesSet.add( (validModules[index], splitString[2]))
+		# rehook the connected modules to nothing
 		for module in hookedModulesSet:
 			mod = __import__('Blueprint.' + module[0], {}, {}, [module[0]])
 			reload(mod)	
 			moduleClass = getattr(mod, mod.CLASS_NAME)
 			moduleInstance = moduleClass(module[1], None)
 			moduleInstance.rehook(None)
+
+		# find linked mirrored moudles and delete their mirrorLinks attribute
+		moduleGrp = self.moduleNamespace+':module_grp'
+		if mc.attributeQuery('mirrorLinks', n=moduleGrp, exists=True):
+			mirrorLinks = mc.getAttr(moduleGrp+'.mirrorLinks')
+			linkedBp = mirrorLinks.rpartition('__')[0]
+			mc.lockNode(linkedBp+':module_container', lock=False, lockUnpublished=False)
+			mc.deleteAttr(linkedBp+':module_grp.mirrorLinks')
+			mc.lockNode(linkedBp+':module_container', lock=True, lockUnpublished=True)
+
 
 		moduleTransform = self.moduleNamespace + ':module_transform'
 		moduleTransformParent = mc.listRelatives(moduleTransform, parent=True)
@@ -564,6 +679,7 @@ class Blueprint:
 				import System.groupSelected as groupSelected
 				reload(groupSelected)
 				groupSelected.UngroupSelected()
+
 
 	def renameModuleInstance(self, newName):
 		if newName == self.userSpecifiedName:
@@ -584,9 +700,26 @@ class Blueprint:
 			mc.namespace(moveNamespace=[self.moduleNamespace, newNamespace])
 			mc.namespace(removeNamespace=self.moduleNamespace)
 
+			# find linked mirrored moudles and rename their mirrorLinks attribute
+			moduleGrp = newNamespace+':module_grp'
+			if mc.attributeQuery('mirrorLinks', n=moduleGrp, exists=True):
+				mirrorLinks = mc.getAttr(moduleGrp+'.mirrorLinks')
+				nodeAndAxis = mirrorLinks.rpartition('__')
+				linkedBp = nodeAndAxis[0]
+				axis = nodeAndAxis[2]
+
+				mc.lockNode(linkedBp+':module_container', lock=False, lockUnpublished=False)
+
+				mc.setAttr(linkedBp+':module_grp.mirrorLinks', newNamespace+'__'+axis, type='string')
+
+				mc.lockNode(linkedBp+':module_container', lock=True, lockUnpublished=True)
+
+
+
 			self.moduleNamespace = newNamespace
 			self.containerName = self.moduleNamespace + ':module_container'
 			mc.lockNode(self.containerName, lock=True, lockUnpublished=True)
+
 
 	#		HOOKING MODULES TOGETHER
 	def initializeHook(self, sRootTranslationControl):
@@ -746,5 +879,132 @@ class Blueprint:
 		rootControl_hookConstraint = rootControl+'_hookConstraint'
 		return (mc.objExists(rootControl_hookConstraint))
 
+
+	# Mirroring
 	def canModuleBeMirrored(self):
 		return self.canBeMirrored
+
+	def mirror(self, sOriginalModule, sMirrorPlane, sRotationFunction, sTranslationFunction):
+		''' Blueprint Mirror method finds what module file the original module is, 
+		instantiates a new module using the new user defined name that's gathered from the mirror UI.
+		And then goes through and does the actual mirroring.
+		Including creating new attributes and links for the mirror to work as expected based on user specs.
+
+		mirroring also happens in:
+			bp.install
+			bp.initializeModuleTransform
+			bp.setupStretchyJointSegment
+			mirrorModule.MirrorModule
+			module.mirror_custom
+		'''
+		self.mirrored = True
+		self.originalModule = sOriginalModule
+		self.mirrorPlane = sMirrorPlane
+		self.rotationFunction = sRotationFunction
+
+		### 		INSTALL NEW MODULE - TO MIRROR
+		# install a new module, but this time the mirrored flag is on
+		self.install()
+		# unlock the container of the newly installed module
+		mc.lockNode(self.containerName, lock=False, lockUnpublished=False)
+		# go through the jointinfo and gather the info of both new and mirrored info
+		for jointInfo in self.jointInfo:
+			jointName = jointInfo[0]
+			originalJoint = self.originalModule+':'+jointName
+			newJoint = self.moduleNamespace+':'+jointName
+			# set the rotation order
+			originalRotationOrder = mc.getAttr(originalJoint+'.rotateOrder')
+			mc.setAttr(newJoint+'.rotateOrder', originalRotationOrder)
+
+		###			ACTUAL START OF MIRRORING
+		# go through the jointInfo and mirror one thing at a time
+		index = 0
+		for jointInfo in self.jointInfo:
+			# every blueprint joint has a pole vector except the last joint of a chain
+			mirrorPoleVector = False
+			if index < len(self.jointInfo) - 1:
+				mirrorPoleVector = True
+
+			jointName = jointInfo[0]
+			originalJoint = self.originalModule+':'+jointName
+			newJoint = self.moduleNamespace+':'+jointName
+			# get translation control names
+			originalTranslationControl = self.getTranslationControl(originalJoint)
+			newTranslationControl = self.getTranslationControl(newJoint)
+			# get original translation control position
+			originalTranslationControlPosition = mc.xform(originalTranslationControl, q=True, ws=True, t=True)
+			# and then multiply the translation values by -1 across the mirror plane
+			if self.mirrorPlane == 'YZ':
+				originalTranslationControlPosition[0] *= -1
+			elif self.mirrorPlane == 'XZ':
+				originalTranslationControlPosition[1] *= -1
+			elif self.mirrorPlane == 'XY':
+				originalTranslationControlPosition[2] *= -1
+			# set the new translation control position to new mirrored position
+			mc.xform(newTranslationControl, ws=True, absolute=True, t=originalTranslationControlPosition)
+
+			#		MIRRORING POLE VECTOR
+			# mirror the pole vector
+			if mirrorPoleVector:
+				# get old pole vector position
+				originalPoleVectorLocator = originalTranslationControl + '_pvLoc'
+				newPoleVectorLocator = newTranslationControl + '_pvLoc'
+				originalPoleVectorLocatorPosition = mc.xform(originalPoleVectorLocator, q=True, ws=True, t=True)
+				# calculate mirror ws position of new pole vector
+				newPoleVectorLocatorPosition = originalPoleVectorLocatorPosition
+				if self.mirrorPlane == 'YZ':
+					newPoleVectorLocatorPosition[0] *= -1
+				elif self.mirrorPlane == 'XZ':
+					newPoleVectorLocatorPosition[1] *= -1
+				elif self.mirrorPlane == 'XY':
+					newPoleVectorLocatorPosition[2] *= -1
+				# set mirror position on new pole vector
+				mc.xform(newPoleVectorLocator, ws=True, absolute=True, t=newPoleVectorLocatorPosition)
+			index += 1
+
+		# call on mirror_custom of derived module
+		self.mirror_custom(self.originalModule)
+
+		###			MIRROR ATTRIBUTES
+		# setting mirror info attribute on the module group
+		moduleGrp = self.moduleNamespace + ':module_grp'
+		mc.select(moduleGrp, r=True)
+		enumNames = 'none:x:y:z'
+		mc.addAttr(at='enum', enumName=enumNames, ln='mirrorInfo', k=False)
+
+		enumValue = 0
+		if sTranslationFunction == 'mirrored':
+			if self.mirrorPlane == 'YZ':
+				enumValue = 1
+			if self.mirrorPlane == 'XZ':
+				enumValue = 2
+			if self.mirrorPlane == 'XY':
+				enumValue = 3	
+		mc.setAttr(moduleGrp+'.mirrorInfo', enumValue)
+
+		# setting the mirror links attribute on the module group
+		linkedAttr = 'mirrorLinks'
+		mc.lockNode(self.originalModule+':module_container', lock=False, lockUnpublished=False)
+
+		for moduleLink in ((self.originalModule, self.moduleNamespace), (self.moduleNamespace, self.originalModule)):
+			moduleGrp = moduleLink[0] + ':module_grp'
+			attrValue = moduleLink[1] + '__'
+
+			if self.mirrorPlane == 'YZ':
+				attrValue += 'X'
+			if self.mirrorPlane == 'XZ':
+				attrValue += 'Y'
+			if self.mirrorPlane == 'XY':
+				attrValue += 'Z'
+
+			mc.select(moduleGrp, r=True)
+			mc.addAttr(dt='string', ln=linkedAttr, k=False)
+			mc.setAttr(moduleGrp+'.'+linkedAttr, attrValue, type='string')
+
+		# lock up
+		for c in [self.originalModule+':module_container', self.containerName]:
+			mc.lockNode(c, lock=True, lockUnpublished=True)
+		mc.select(cl=True)
+		# End of mrror method
+
+

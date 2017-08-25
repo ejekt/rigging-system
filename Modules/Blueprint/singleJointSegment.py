@@ -14,7 +14,15 @@ ICON = os.environ["RIGGING_TOOL_ROOT"] + '/Icons/_singleJointSeg.xpm'
 
 class SingleJointSegment(bp.Blueprint):
 	def __init__(self, sUserSpecifiedName, hookObj):
+		''' blueprint module of a single joint segment pointng down X.
+		It includes a translation control per joint, a stretchy IK and 
+		with an orientation control between them.
 
+	    @param sUserSpecifiedName 	- name says it all
+	    @param hookObj 				- string - name of the object to hook to	
+    	
+    	@procedure
+		'''
 		jointInfo = [['root_joint', [0.0,0.0,0.0]], ['end_joint',[4.0,0.0,0.0]]]
 
 		#print sUserSpecifiedName
@@ -25,9 +33,25 @@ class SingleJointSegment(bp.Blueprint):
 		self.orientationControl = self.createOrientationControl(joints[0], joints[1])
 
 	def Ui_custom(self):
+		''' This module builds a rotation control and has a custom UI element for that.
+		'''
 		mc.setParent(self.parentColumnLayout)
 		joints = self.getJoints()
 		self.createRotationOrderUiControl(joints[0])
+
+	def mirror_custom(self, sOriginalModule):
+		''' when mirroring this module we also want to match the orientationControl RX to
+		the mirrored module's orientation control.
+		'''
+		jointName = self.jointInfo[0][0]
+		originalJoint = sOriginalModule + ':' + jointName
+		newJoint = self.moduleNamespace + ':' + jointName
+
+		originalOrientationControl = self.getOrientationControl(originalJoint)
+		newOrientationControl = self.getOrientationControl(newJoint)
+
+		mc.setAttr(newOrientationControl+'.rx', mc.getAttr(originalOrientationControl+'.rx'))
+
 
 	def lockPhase1(self):
 		# gather and return all required information from this modules control object

@@ -85,6 +85,7 @@ class GroupSelected:
 			if valid == True:
 				self.objectsToGroup.append(obj)
 
+
 	def createTempGroupRepresentation(self):
 		controlGrpFile = os.environ['RIGGING_TOOL_ROOT'] + '/ControlObjects/Blueprint/controlGroup_control.ma'
 		mc.file(controlGrpFile, i=True)
@@ -98,9 +99,11 @@ class GroupSelected:
 
 		mc.aliasAttr('globalScale', self.tempGrpTransform+'.sy')
 
+
 	def createAtLastSelected(self, *args):
 		controlPos = mc.xform(self.objectsToGroup[-1], q=True, ws=True, t=True)
 		mc.xform(self.tempGrpTransform, ws=True, absolute=True, t=controlPos)
+
 
 	def createAtAveragePosition(self, *args):
 		controlPos = [0.0,0.0,0.0]
@@ -116,21 +119,25 @@ class GroupSelected:
 
 		mc.xform(self.tempGrpTransform, ws=True, absolute=True, t=controlPos)
 
+
 	def cancelWindow(self, *args):
 		mc.deleteUI(self.dUiElements['window'])
 		mc.delete(self.tempGrpTransform)
+
 
 	def acceptWindow(self, *args):
 		groupName = mc.textField(self.dUiElements['groupName'], q=True, text=True)
 		if self.createGroup(groupName) != None:
 			mc.deleteUI(self.dUiElements['window'])
 
+
 	def createGroup(self, sGroupName):
+		# check that group of that name doesn't exist yet
 		fullGroupName = 'Group__' + sGroupName
 		if mc.objExists(fullGroupName):
 			mc.confirmDialog(title='Name Conflict', m='Group \''+groupName+'\' already exists', button='Accept', db='Accept')
 			return None
-
+		# rename the tempGroup to the user specified name
 		groupTransform = mc.rename(self.tempGrpTransform, fullGroupName)
 		groupContainer = 'group_container'
 		if not mc.objExists(groupContainer):
@@ -168,6 +175,7 @@ class GroupSelected:
 
 		return groupTransform
 
+
 	def addGroupToContainer(self, sGroup):
 		groupContainer = 'group_container'
 		utils.addNodeToContainer(groupContainer, sGroup, includeShapes=True)
@@ -176,6 +184,38 @@ class GroupSelected:
 		mc.container(groupContainer, e=True, publishAndBind=[sGroup+'.r', groupName+'_R'])
 		mc.container(groupContainer, e=True, publishAndBind=[sGroup+'.globalScale', groupName+'_globalScale'])
 
+
+
+	def createGroupAtSpecified(self, sName, sTargetGroup, sParent):
+		self.createTempGroupRepresentation()
+
+		pCon = mc.parentConstraint(sTargetGroup, self.tempGrpTransform	, mo=False)[0]
+		mc.delete(pCon)
+
+		scale = mc.getAttr(sTargetGroup+'.globalScale')
+		mc.setAttr(self.tempGrpTransform	+'.globalScale', scale)
+
+		if sParent:
+			mc.parent(self.tempGrpTransform	, sParent, absolute=True)
+
+		newGroup = self.createGroup(sName)
+
+		return newGroup
+
+
+
+
+
+
+
+
+
+
+
+
+###-------------------------------------------------------------------------------------------
+
+###					UNGROUPED SELECTED CLASS
 
 
 class UngroupSelected:
@@ -226,6 +266,7 @@ class UngroupSelected:
 		for container in moduleContainers:
 			if mc.objExists(container):
 				mc.lockNode(container, l=True, lockUnpublished=True)
+
 
 
 	def findChildModules(self, sGroup):
