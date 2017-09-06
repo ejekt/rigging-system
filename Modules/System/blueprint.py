@@ -619,10 +619,28 @@ class Blueprint:
 		self.Ui_custom()
 
 	def createRotationOrderUiControl(self, joint):
+		import __main__
+		__main__._ff = self
+
 		if mc.objExists(joint):
 			jointName = utils.stripAllNamespaces(joint)[1]
 			attrControlGrp = mc.attrControlGrp(attribute=joint+'.rotateOrder', label=jointName)
+			print joint + '.rotateOrder1111111222221111111'
+			job = mc.scriptJob(attributeChange=[joint+'.rotateOrder', 
+			partial(__main__._ff.attributeChange_callbackMethod, joint, '.rotateOrder')],
+			parent=attrControlGrp)
+			print job
+	# THIS NEVER GETS RUN
+			print joint + '.rotateOrdeasdadawdwdasdr'
+			#print '\ncreated job ', job
+			return job
 
+	def attributeChange_callBackMethod(self, sObj, sAttribute, *args):
+		print 'attribute changed'
+		print sObj
+		print sAttribute
+		
+		
 	def delete(self):
 		mc.lockNode(self.containerName, lock=False, lockUnpublished=False)
 		# Gather all modules in directory
