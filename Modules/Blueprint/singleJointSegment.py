@@ -29,8 +29,10 @@ class SingleJointSegment(bp.Blueprint):
 
 		bp.Blueprint.__init__(self, CLASS_NAME, sUserSpecifiedName, jointInfo, hookObj)
 
+
 	def install_custom(self, joints):
 		self.orientationControl = self.createOrientationControl(joints[0], joints[1])
+
 
 	def Ui_custom(self):
 		''' This module builds a rotation control and has a custom UI element for that.
@@ -38,6 +40,7 @@ class SingleJointSegment(bp.Blueprint):
 		mc.setParent(self.parentColumnLayout)
 		joints = self.getJoints()
 		self.createRotationOrderUiControl(joints[0])
+
 
 	def mirror_custom(self, sOriginalModule):
 		''' when mirroring this module we also want to match the orientationControl RX to
@@ -76,8 +79,10 @@ class SingleJointSegment(bp.Blueprint):
 		for j in joints:
 			jointPositions.append(mc.xform(j, q=True, ws=True, t=True))
 
-		orientationInfo = self.getJointOrientation(joints[0], self.moduleNamespace+':joints_grp')
-		#print 'orientationInfo ', orientationInfo
+		cleanParent = self.moduleNamespace + ':joints_grp'
+		# get the orientation values and the clean parent of the joint we're getting the values for.
+		orientationInfo = self.orientationControlledJoint_getOrientation(joints[0], cleanParent)
+
 		mc.delete(orientationInfo[1])
 		jointOrientationValues.append(orientationInfo[0])
 		jointOrientations = (jointOrientationValues, None)
@@ -92,7 +97,7 @@ class SingleJointSegment(bp.Blueprint):
 		dModuleInfo = {}
 		dModuleInfo['jointPositions'] = jointPositions					# [(xyz position)]
 		dModuleInfo['jointOrientations'] = jointOrientations  			# [([xyz orientation], None)]
-		dModuleInfo['jointRotationOrder'] = jointRotationOrder 			# .rotateOrder value
+		dModuleInfo['jointRotationOrders'] = jointRotationOrders		# .rotateOrder value
 		dModuleInfo['jointPreferredAngles'] = jointPreferredAngles		# None
 		dModuleInfo['hookObject'] = hookObject 							# None
 		dModuleInfo['rootTransform'] = rootTransform					# False

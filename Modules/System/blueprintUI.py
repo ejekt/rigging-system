@@ -9,8 +9,11 @@ reload(utils)
 
 class Blueprint_UI:
 	def __init__(self):
-		#build the window and run initilizeModuleTab
+		self.moduleInstance = None
 
+		self.deleteSymmetryMoveExpressions()
+
+		#build the window and run initilizeModuleTab
 		self.dUiElements = {}
 
 		if mc.window('bluePrintUiWindow', exists=True):
@@ -50,18 +53,9 @@ class Blueprint_UI:
 		# create listener script job
 		self.createScriptJob()
 
-	def createScriptJob(self):
-		# create the scriptJob which specifies the command to run every time selection changes
-		self.jobNum = mc.scriptJob(event=['SelectionChanged', 
-									self.modifySelected], 
-									runOnce=True, 
-									parent=self.dUiElements['window'])
-		print 'created SCRIPTJOB {}'.format(self.jobNum)
-
-	def deleteScriptJob(self):
-		# kill the scriptJob 
-		mc.scriptJob(kill=self.jobNum)
-
+	#
+	#		UI
+	#
 	def initializeModuleTab(self, tabHeight, tabWidth):
 		bespokeScrollHeight = 120
 		scrollHeight = tabHeight - bespokeScrollHeight
@@ -119,7 +113,9 @@ class Blueprint_UI:
 		# row3
 		mc.text(label='')
 		self.dUiElements['deleteModuleBtn'] = mc.button(en=False, label='Delete')
-		self.dUiElements['symmetryMoveCheckBox'] = mc.checkBox(en=True, label='Symmetry Move')
+		self.dUiElements['symmetryMoveCheckBox'] = mc.checkBox(en=True, label='Symmetry Move',
+															onCommand=self.setupSymmetryMoveExpressions_checkBox,
+															offCommand=self.deleteSymmetryMoveExpressions,)
 
 		# framework for module specific controls
 		mc.setParent(self.dUiElements['moduleColumn'])
@@ -135,6 +131,7 @@ class Blueprint_UI:
 		mc.text(label='This is\n MODULE SPECIFIC TERRITORY')
 		mc.setParent(self.dUiElements['moduleColumn'])
 		mc.separator()
+
 
 	def createModuleInstallButton(self, module):
 		# initialize a new instance of the module class and make a button to run it
@@ -160,6 +157,8 @@ class Blueprint_UI:
 		mc.scrollField(text=desc, editable=False, wordWrap=True, w=300)
 		mc.setParent(self.dUiElements['moduleListColumn'])
 
+
+	# 		call to install any module
 	def installModule(self, module, *args):
 		''' base blueprint module installer '''
 		# access the blueprint model class name
@@ -189,7 +188,9 @@ class Blueprint_UI:
 		moduleTransform = moduleInstance.moduleTransform
 		mc.select(moduleTransform, r=True)
 		mc.setToolTo('moveSuperContext')
-	
+
+
+
 	def lock(self, *args):
 		# Get user confirmation to continue lock method
 		result = mc.confirmDialog(messageAlign='center', title='Lock Blueprint', 
@@ -201,9 +202,12 @@ class Blueprint_UI:
 							cancelButton='Cancel',
 							dismissString='Cancel', 
 							icon='warning')
-		if result == 'Cancel':
-			print 'pressed cancel'
-			return None
+		if result != 'Accept':
+			return
+
+		self.deleteSymmetryMoveExpressions()
+		mc.checkBox(self.dUiElements['symmetryMoveCheckBox'], e=True, v=False)			
+
 		# Gather all modules in directory
 		moduleInfo = [] # store (module, userSpecificName) pairs
 		moduleNameInfo = utils.findAllModuleNames('/Modules/Blueprint')
@@ -257,12 +261,34 @@ class Blueprint_UI:
 			module[0].lockPhase3(hookObject)
 
 
+
+
+
 	# SCRIPTJOB EVERYTIME SELECTION CHANGES
+	def createScriptJob(self):
+		# create the scriptJob which specifies the command to run every time selection changes
+		self.jobNum = mc.scriptJob(event=['SelectionChanged', 
+									self.modifySelected], 
+									runOnce=True, 
+									parent=self.dUiElements['window'])
+		print 'created SCRIPTJOB {}'.format(self.jobNum)
+
+
+	def deleteScriptJob(self):
+		# kill the scriptJob 
+		mc.scriptJob(kill=self.jobNum)
+
+
 	def modifySelected(self, *args):
 		# script job that fires whenever a selection is changed
 		# method to allow changes to a SINGLE selected module at a time using the GUI
 		controlEnable = False
 		userSpecifiedName = ''
+
+		if mc.checkBox(self.dUiElements['symmetryMoveCheckBox'], q=True, v=True):
+			self.deleteSymmetryMoveExpressions()
+			self.setupSymmetryMoveExpressions()
+
 		selectedNodes = mc.ls(sl=True)
 		if len(selectedNodes) <= 1:
 			# clear out variables if selection 1 or less
@@ -349,23 +375,42 @@ class Blueprint_UI:
 
 		mc.setParent(self.dUiElements['moduleSpecificColumn'])
 
+		# this is where the individual module instances call their Ui
 		if self.moduleInstance:
 			self.moduleInstance.Ui(self, self.dUiElements['moduleSpecificColumn'])
 
+
 	def deleteModule(self, *args):
+		symmetryMove = mc.checkBox(self.dUiElements['symmetryMoveCheckBox'], q=True, v=True)			
+		if symmetryMove:
+			self.deleteSymmetryMoveExpressions()
+
 		self.moduleInstance.delete()
 		mc.select(cl=True)
+
+		if symmetryMove:
+			self.setupSymmetryMoveExpressions_checkBox()
+
 
 	def renameModule(self, *args):
 		newName = mc.textField(self.dUiElements['moduleName'], q=True, text=True)
 
+		symmetryMove = mc.checkBox(self.dUiElements['symmetryMoveCheckBox'], q=True, v=True)			
+		if symmetryMove:
+			self.deleteSymmetryMoveExpressions()
+
 		self.moduleInstance.renameModuleInstance(newName)
+
+		if symmetryMove:
+			self.setupSymmetryMoveExpressions_checkBox()
+
 		previousSelection = mc.ls(sl=True)
 
 		if len(previousSelection) > 0:
 			mc.select(previousSelection, r=True)
 		else:
 			mc.select(cl=True)
+
 
 	# HOOK TOOLS
 	def findHookObjFromSelection(self, *args):
@@ -424,8 +469,10 @@ class Blueprint_UI:
 					c=self.constrainRootToHook)
 
 
+
 	# GROUPING AND UNGROUPING
 	def groupSelected(self, *args):
+		# initialize a GroupSelected class to handle all the grouping functionality
 		import System.groupSelected as groupSelected
 		reload(groupSelected)
 
@@ -433,15 +480,164 @@ class Blueprint_UI:
 
 
 	def ungroupSelected(self, *args):
+		# initialize a UngroupSepected class to handle all the ungrouping functionality
 		import System.groupSelected as groupSelected
 		reload(groupSelected)
 
 		groupSelected.UngroupSelected()
 
 
+
 	# MIRRORING
 	def mirrorSelection(self, *args):
+		# initialize a MirrorModule class to handle all the mirroring and mirrored nodes
 		import System.mirrorModule as mirrorModule
 		reload(mirrorModule)
 
 		mirrorModule.MirrorModule()
+
+
+
+	# SYMMETRY MOVE
+	def setupSymmetryMoveExpressions_checkBox(self, *args):
+		# wrapper to delete script job before setting up the summetry move
+		self.deleteScriptJob()
+		self.setupSymmetryMoveExpressions()
+		self.createScriptJob()
+
+
+	def setupSymmetryMoveExpressions(self, *args):
+		mc.namespace(setNamespace=':')
+		sel = mc.ls(sl=True, transforms=True)
+		# create the container and all the needed symmetry nodes
+		expressionContainer = mc.container(n='symmetryMove_container')
+		if len(sel) == 0:
+			print
+
+		linkedObjs = []
+		for obj in sel:
+			if obj in linkedObjs:
+				continue
+			# gather mirrorInfo and run setupSymmetryMoveForObject
+			# for the case of a group being symmetry moved
+			if obj.find('Group__') == 0:
+				if mc.attributeQuery('mirrorLinks', n=obj, exists=True):
+					mirrorLinks = mc.getAttr(obj+'.mirrorLinks')
+					mirrorInfo = mirrorLinks.rpartition('__')
+					mirrorObj = mirrorInfo[0]
+					mirrorAxis = mirrorInfo[2]
+					linkedObjs.append(mirrorObj)
+
+					self.setupSymmetryMoveForObject(obj, mirrorObj, mirrorAxis, 
+													bTranslation=True, bOrientation=True, bGlobalScale=True)
+
+			else:
+				objNamespaceInfo = utils.stripLeadingNamespace(obj)
+				if objNamespaceInfo != None:
+					# check for the mirrorLinks
+					if mc.attributeQuery('mirrorLinks', n=objNamespaceInfo[0]+':module_grp', exists=True):
+						mirrorLinks = mc.getAttr(objNamespaceInfo[0]+':module_grp.mirrorLinks')
+						moduleInfo = mirrorLinks.rpartition('__')
+						module = moduleInfo[0]
+						axis = moduleInfo[2]
+
+						if objNamespaceInfo[1].find('translation_control') != -1:
+							# when symmetry moving translation controls
+							mirrorObj = module + ':' + objNamespaceInfo[1]
+							linkedObjs.append(mirrorObj)
+							self.setupSymmetryMoveForObject(obj, mirrorObj, axis, 
+													bTranslation=True, bOrientation=False, bGlobalScale=False)
+						elif objNamespaceInfo[1].find('module_transform') == 0:
+							# when symmetry moving module controls. t,r,s all true
+							mirrorObj = module + ':module_transform'
+							linkedObjs.append(mirrorObj)
+							self.setupSymmetryMoveForObject(obj, mirrorObj, axis, 
+													bTranslation=True, bOrientation=True, bGlobalScale=True)
+						elif objNamespaceInfo[1].find('orientation_control') != -1:
+							# when symmetry moving orientation control drive with expression
+							mirrorObj = module + ':' + objNamespaceInfo[1]
+							linkedObjs.append(mirrorObj)
+							expressionString = mirrorObj + '.rx = ' + obj + '.rx;\n'
+							expression = mc.expression(n=mirrorObj+'_symmetryMoveExpression', string=expressionString)
+							utils.addNodeToContainer(expressionContainer, expression)
+						elif objNamespaceInfo[1].find('singleJointOrientation_control') != -1:
+							mirrorObj = module + ':' + objNamespaceInfo[1]
+							linkedObjs.append(mirrorObj)
+							expressionString = mirrorObj + '.rx = ' + obj + '.rx;\n'
+							expressionString += mirrorObj + '.ry = ' + obj + '.ry;\n'
+							expressionString += mirrorObj + '.rz = ' + obj + '.rz;\n'
+							expression = mc.expression(n=mirrorObj+'_symmetryMoveExpression', string=expressionString)
+							utils.addNodeToContainer(expressionContainer, expression)
+
+		# force evaluate the nodes so they behave as expected
+		# causes the script job to re-fire 
+		mc.dgdirty( sel )
+
+		mc.lockNode(expressionContainer, lock=True)
+		mc.select(sel, r=True)
+
+
+	def setupSymmetryMoveForObject(self, sObj, sMirrorObj, sMirrorAxis, bTranslation, bOrientation, bGlobalScale):
+		# duplicate selected object, parent to an empty group
+		duplicateObj = mc.duplicate(sObj, parentOnly=True, inputConnections=True, n=sObj+'_mirrorHelper')[0]
+		emptyGroup = mc.group(em=True, n=sObj+'_emptyInvert_grp')
+		mc.parent(duplicateObj, emptyGroup, absolute=True)
+		# scale in -1 across the mirrorAxis
+		scaleAttr = '.scale' + sMirrorAxis
+		mc.setAttr(emptyGroup+scaleAttr, -1)
+
+		# construct the symmetry move mel expression
+		# it queries the object t,r,s and maps it to the dulpicate object attrs
+		expressionString = ''
+		expressionString += 'namespace -setNamespace ":";\n'
+		if bTranslation:
+			expressionString += '$worldSpacePos = `xform -q -ws -translation ' + sObj + '`;\n'
+		if bOrientation:
+			expressionString += '$worldSpaceOrient = `xform -q -ws -rotation ' + sObj + '`;\n'
+		attrs = []
+		if bTranslation:
+			attrs.extend(['.tx','.ty','.tz'])
+		if bOrientation:
+			attrs.extend(['.rx','.ry','.rz'])
+		for attr in attrs:
+			expressionString += duplicateObj+attr + ' = ' + sObj+attr + ';\n'
+		i=0
+		for axis in ['X','Y','Z']:
+			if bTranslation:
+				expressionString += duplicateObj+'.translate'+axis + ' = $worldSpacePos['+str(i)+'];\n'
+			if bOrientation:
+				expressionString += duplicateObj+'.rotate'+axis + ' = $worldSpaceOrient['+str(i)+'];\n'
+			i += 1
+		
+		# create the expression 
+		expression = mc.expression(n=duplicateObj+'_symmetryMoveExpression', string=expressionString)
+
+		#print 'now trying to constrain {} \tto\t {}'.format(sMirrorObj, duplicateObj)
+		# constrain the actual mirrored object to the duplicate object
+		constraint = ''
+		if bTranslation and bOrientation:
+			constraint = mc.parentConstraint(duplicateObj, sMirrorObj, mo=False, n=sMirrorObj+'_symmetryMoveConstraint')[0]
+		elif bTranslation:
+			constraint = mc.pointConstraint(duplicateObj, sMirrorObj, mo=False, n=sMirrorObj+'_symmetryMoveConstraint')[0]
+		elif bOrientation:
+			constraint = mc.orientConstraint(duplicateObj, sMirrorObj, mo=False, n=sMirrorObj+'_symmetryMoveConstraint')[0]
+		if bGlobalScale:
+			mc.connectAttr(duplicateObj+'.globalScale', sMirrorObj+'.globalScale')
+
+
+		# add all symmetry move nodes to the container
+		utils.addNodeToContainer('symmetryMove_container', [duplicateObj, emptyGroup, expression, constraint], ihb=True)
+
+
+	def deleteSymmetryMoveExpressions(self, *args):
+		# delete the symmetry move ndoes, but expressions first, then constraints
+		container = 'symmetryMove_container'
+		if mc.objExists(container):
+			mc.lockNode(container, lock=False)
+			nodes = mc.container(container, q=True, nodeList=True)
+			nodes = mc.ls(nodes, type=['parentConstraint','pointConstraint','orientConstraint'])
+
+			if len(nodes) > 0:
+				mc.delete(nodes)
+
+			mc.delete(container)

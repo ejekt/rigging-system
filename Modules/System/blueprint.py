@@ -4,6 +4,7 @@ reload(n)
 import maya.cmds as mc
 import System.utils as utils
 reload(utils)
+from functools import partial
 
 
 class Blueprint:
@@ -51,10 +52,14 @@ class Blueprint:
 		mc.namespace(setNamespace=':')
 		mc.namespace(add=self.moduleNamespace)
 
+		# create all the baseclass component groups to organize nodes into
 		self.jointsGrp = mc.group(em=True, n=self.moduleNamespace+':joints_grp')
 		self.hierarchyRepGrp = mc.group(em=True, n=self.moduleNamespace+':hierarchyRep_grp')
 		self.orientationControlGrp = mc.group(em=True, n=self.moduleNamespace+':orientationControls_grp')
-		self.moduleGrp = mc.group([self.jointsGrp, self.hierarchyRepGrp], n=self.moduleNamespace+':module_grp')
+		self.preferredAngleRepresentationGrp = mc.group(em=True, n=self.moduleNamespace+':prefAngleRep_grp')
+		self.moduleGrp = mc.group([self.jointsGrp, self.hierarchyRepGrp, 
+								self.orientationControlGrp, self.preferredAngleRepresentationGrp], 
+								n=self.moduleNamespace+':module_grp')
 
 
 		mc.container(n=self.containerName, addNode=[self.moduleGrp], includeHierarchyBelow=True)
@@ -127,6 +132,7 @@ class Blueprint:
 				self.jointInfo[index][1] = mc.xform(newJointName, q=True, ws=True, t=True)
 				index += 1
 
+		# initialize all the blueprint controls and organize nodes
 		mc.parent(joints[0], self.jointsGrp, absolute=True)
 
 		# prepare the parent translation control group 
@@ -147,6 +153,7 @@ class Blueprint:
 		for index in range(len(joints) - 1):
 			self.setupStretchyJointSegment(joints[index], joints[index+1])
 
+		# per module custom install
 		self.install_custom(joints)
 
 		utils.forceSceneUpdate()
@@ -180,9 +187,9 @@ class Blueprint:
 
 		return control
 
-	def getTranslationControl(self, jointName):
-		return jointName + '_translation_control'
-
+	#
+	# 		Base blueprint control objects
+	#
 	def setupStretchyJointSegment(self, parentJoint, childJoint):
 		''' setup 2 joints to have an IK and stretchy joint in the segment.
 		Including a pole vector constraint for the IK, a group and cnstraint so it follows the root
@@ -226,6 +233,7 @@ class Blueprint:
 
 		self.createHierarchyRepresentation(parentJoint, childJoint)
 
+
 	def createHierarchyRepresentation(self, parentJoint, childJoint):
 		# run the createStretchyObject and parent to grp
 		nodes = self.createStretchyObject('/ControlObjects/Blueprint/hierarchy_representation.ma',
@@ -261,6 +269,7 @@ class Blueprint:
 
 		return(objContainer, obj, constrainedGrp)
 
+
 	def initializeModuleTransforn(self, rootPos):
 		# import the control group file and rename to module specs
 		controlGrpFile = os.environ['RIGGING_TOOL_ROOT']+'/ControlObjects/Blueprint/controlGroup_control.ma'
@@ -293,24 +302,23 @@ class Blueprint:
 			mc.delete([tempLocator, sCon])
 			mc.xform(self.moduleTransform, objectSpace=True, scale=[scale,scale,scale])
 
-
-
-
+		# organize
 		utils.addNodeToContainer(self.containerName, self.moduleTransform, ihb=True)
 
 		# setup global scaling
 		mc.connectAttr(self.moduleTransform+'.sy', self.moduleTransform+'.sx')
 		mc.connectAttr(self.moduleTransform+'.sy', self.moduleTransform+'.sz')
-
 		mc.aliasAttr('globalScale', self.moduleTransform+'.sy')
 
 		mc.container(self.containerName, e=True, publishAndBind=[self.moduleTransform+'.translate', 'module_transform_T'])
 		mc.container(self.containerName, e=True, publishAndBind=[self.moduleTransform+'.rotate', 'module_transform_R'])
 		mc.container(self.containerName, e=True, publishAndBind=[self.moduleTransform+'.globalScale', 'module_transform_globalScale'])
 
+
 	def deleteHierarchyRepresentation(self, parentJoint):
 		hierarchyContainer = parentJoint + '_hierarchy_representation_container'
 		mc.delete(hierarchyContainer)
+
 
 	def createOrientationControl(self, parentJoint, childJoint):
 		self.deleteHierarchyRepresentation(parentJoint)
@@ -324,7 +332,10 @@ class Blueprint:
 		constrainedGrp = nodes[2]
 
 		mc.parent(constrainedGrp, self.orientationControlGrp, relative=True)
-		mc.parent(self.orientationControlGrp, self.moduleGrp, relative=True)
+		try:		# needs to be parented only once. Errors if run and group is already a child o the moduleGrp
+			mc.parent(self.orientationControlGrp, self.moduleGrp, relative=True)
+		except:
+			pass
 		parentJoint_noNs = utils.stripAllNamespaces(parentJoint)[1]
 		attrName = parentJoint_noNs + '_orientation'
 		#childJoint_noNs= utils.stripAllNamespaces(child)[1]
@@ -334,10 +345,23 @@ class Blueprint:
 
 		return orientationControl
 
+	#
+	#		GET tools
+	#
+
+	def getTranslationControl(self, jointName):
+		return jointName + '_translation_control'
+
+
 	def getOrientationControl(self, sJoint):
 		# based on the orientation control file used in this system 
 		# concatinate jiont with "_orientation_control
 		return sJoint+'_orientation_control'
+
+
+	def getPreferredAngleControl(self, jointName):
+		return jointName + '_preferredAngle_representation'
+
 
 	def getJoints(self):
 		# returns all the joints in the module with namespace
@@ -349,13 +373,17 @@ class Blueprint:
 
 		return joints
 
-	def getJointOrientation(self, sJoint, sCleanParent):
+
+	def orientationControlledJoint_getOrientation(self, sJoint, sCleanParent):
 		# clean out the joints orientation and return it with a duplicated joint using the adjusted orientation
 		newCleanParent = mc.duplicate(sJoint, parentOnly=True)[0]
 		# this won't work if the joint is ever not a child of cleanparent, 
 		# parenting will error due to the locked state of the whole blueprint
-		#if not sCleanParent in mc.listRelatives(newCleanParent, parent=True):
-		#	mc.parent(newCleanParent, sCleanParent, absolute=True)
+		if not sCleanParent in mc.listRelatives(newCleanParent, parent=True):
+			try:
+				mc.parent(newCleanParent, sCleanParent, absolute=True)
+			except:
+				pass
 
 		# freeze rotation on new duplicate of sJoint 
 		# so that any world orientation gets saved in it's jointOrient
@@ -369,9 +397,11 @@ class Blueprint:
 		oY = mc.getAttr(newCleanParent+'.jointOrientY')
 		oZ = mc.getAttr(newCleanParent+'.jointOrientZ')
 
-		orientationVal = (oX, oY, oZ)
+		vOrientationVals = (oX, oY, oZ)
 
-		return (orientationVal, newCleanParent)
+		return (vOrientationVals, newCleanParent)
+
+
 
 	#
 	#		LOCKING PHASES
@@ -382,12 +412,12 @@ class Blueprint:
 		# jointPositions = list of joint positions from the root down the hierarchy
 		# jointOrientations = list of orientations or a list of axis information
 		#			# these are passed as a touple: (orientations,None) or (None, axisInfo)
-		# jointRotationOrder = list of joint rotation order (intger values gathered with getAttr)
+		# jointRotationOrders = list of joint rotation order (intger values gathered with getAttr)
 		# jointPreferredAngles = a list of jiont preferred angles, optional (can pass None)
 		# hookObject = self.findHookObjectForLock()
 		# rootTransform = a bool, either True or False. True = T,R,S on root joint. False = R only
 		# 
-		# moduleInfo = (jointPositions, jointOrientations, jointRotationOrder, jointPreferredAngles, hookObject, rootTransform)
+		# moduleInfo = (jointPositions, jointOrientations, jointRotationOrders, jointPreferredAngles, hookObject, rootTransform)
 		# return moduleInfo
 
 		return None
@@ -408,8 +438,8 @@ class Blueprint:
 			jointOrientations = jointOrientations[0]
 		numOrientations = len(jointOrientations)
 
-		jointRotationOrder = dModuleInfo['jointRotationOrder']
-		numRotationOrder = len(jointRotationOrder)
+		jointRotationOrders = dModuleInfo['jointRotationOrders']
+		numRotationOrders = len(jointRotationOrders)
 
 		jointPreferredAngles = dModuleInfo['jointPreferredAngles']
 		numPreferredAngles = 0
@@ -471,8 +501,8 @@ class Blueprint:
 									radius=jointRadius)
 			newJoints.append(newJoint)
 
-			if i < numRotationOrder:
-				mc.setAttr(newJoint+'.rotateOrder', int(jointRotationOrder[i]))
+			if i < numRotationOrders:
+				mc.setAttr(newJoint+'.rotateOrder', int(jointRotationOrders[i]))
 
 			if i < numPreferredAngles:
 				mc.setAttr(newJoint+'.preferredAngleX', jointPreferredAngles[i][0])
@@ -609,6 +639,16 @@ class Blueprint:
 
 		mc.lockNode(self.containerName, lock=True, lockUnpublished=True)
 
+
+
+
+
+
+
+
+
+
+
 	#
 	#			UI TOOLS
 	#
@@ -618,29 +658,56 @@ class Blueprint:
 		self.parentColumnLayout = parentColumnLayout
 		self.Ui_custom()
 
-	def createRotationOrderUiControl(self, joint):
-		import __main__
-		__main__._ff = self
 
+
+#!
+	#		NO MATTER HOW I TRY TO RUN THE JOB SCRIPT, IT SILENTLY BREAKS OUT AND STOPS FURTHER CODE
+	def createRotationOrderUiControl(self, joint):
 		if mc.objExists(joint):
 			jointName = utils.stripAllNamespaces(joint)[1]
 			attrControlGrp = mc.attrControlGrp(attribute=joint+'.rotateOrder', label=jointName)
 			print joint + '.rotateOrder1111111222221111111'
-			job = mc.scriptJob(attributeChange=[joint+'.rotateOrder', 
-			partial(__main__._ff.attributeChange_callbackMethod, joint, '.rotateOrder')],
-			parent=attrControlGrp)
-			print job
 	# THIS NEVER GETS RUN
-			print joint + '.rotateOrdeasdadawdwdasdr'
-			#print '\ncreated job ', job
-			return job
-
+			'''
+			job = mc.scriptJob(attributeChange=[joint+'.rotateOrder', 
+								partial(self.attributeChange_callBackMethod, joint, '.rotateOrder')],
+								parent=attrControlGrp)
+			print job
+			'''
+	
+	# THIS NEVER GETS RUN
 	def attributeChange_callBackMethod(self, sObj, sAttribute, *args):
 		print 'attribute changed'
 		print sObj
 		print sAttribute
-		
-		
+
+		if mc.checkBox(self.bpUi_instance.dUiElements['symmetryMoveCheckBox'], q=True, value=True):
+			moduleInfo = utils.stripLeadingNamespace(sObj)
+			module = moduleInfo[0]
+			objName = moduleInfo[1]
+
+			moduleGrp = module + ':module_grp'
+			if mc.attributeQuery('mirrorLinks', n=moduleGrp, exists=True):
+				mirrorLinks = mc.getAttr(moduleGrp+'.mirrorLinks')
+				mirrorModule = mirrorLinks.rpartition('__')[0]
+				mirrorObj = mirrorModule + ':' + objName
+				newValue = mc.getAttr(obj+sAttribute)
+				mc.setAttr(mirrorObj, newValue)
+
+
+	def createPreferredAngleUiControl(self, preferredAngle_representation):
+		label = utils.stripLeadingNamespace(preferredAngle_representation)[1].partition('_representation')[0]
+		enumOptionMenu = mc.attrEnumOptionMenu(label=label, at=preferredAngle_representation+'.axis')
+		'''mc.scriptJob(attributeChange=[preferredAngle_representation+'.axis', 
+										partial(self.attributeChange_callBackMethod, 
+											preferredAngle_representation, '.axis')],
+										parent=enumOptionMenu)
+		'''
+
+#!
+
+
+
 	def delete(self):
 		mc.lockNode(self.containerName, lock=False, lockUnpublished=False)
 		# Gather all modules in directory
@@ -670,7 +737,7 @@ class Blueprint:
 			moduleInstance = moduleClass(module[1], None)
 			moduleInstance.rehook(None)
 
-		# find linked mirrored moudles and delete their mirrorLinks attribute
+		# find linked mirrored modules and delete their mirrorLinks attribute
 		moduleGrp = self.moduleNamespace+':module_grp'
 		if mc.attributeQuery('mirrorLinks', n=moduleGrp, exists=True):
 			mirrorLinks = mc.getAttr(moduleGrp+'.mirrorLinks')
@@ -708,7 +775,7 @@ class Blueprint:
 							button=['Accept'], ds='Accept')
 			return False
 		else:
-			# create the new namespace, copy 
+			# create the new namespace, move current namespace over, and delete the old one 
 			newNamespace = self.moduleName + '__' + newName
 			mc.lockNode(self.containerName, lock=False, lockUnpublished=False)
 			
@@ -725,15 +792,11 @@ class Blueprint:
 				nodeAndAxis = mirrorLinks.rpartition('__')
 				linkedBp = nodeAndAxis[0]
 				axis = nodeAndAxis[2]
-
+				# change the mirrorLinks attr value to the newName
 				mc.lockNode(linkedBp+':module_container', lock=False, lockUnpublished=False)
-
 				mc.setAttr(linkedBp+':module_grp.mirrorLinks', newNamespace+'__'+axis, type='string')
-
 				mc.lockNode(linkedBp+':module_container', lock=True, lockUnpublished=True)
-
-
-
+			# rename class variables
 			self.moduleNamespace = newNamespace
 			self.containerName = self.moduleNamespace + ':module_container'
 			mc.lockNode(self.containerName, lock=True, lockUnpublished=True)
@@ -1026,3 +1089,36 @@ class Blueprint:
 		# End of mrror method
 
 
+
+	def createPreferredAngleRepresentation(self, joint, scaleTarget, bChildOrientationControl=False):
+		# import the control maya file and rename all it's nodes 
+		paRepFile = os.environ['RIGGING_TOOL_ROOT'] + '/ControlObjects/Blueprint/preferredAngle_representation.ma'
+		mc.file(paRepFile, i=True)
+		container = mc.rename('preferredAngle_representation_container', joint+'_preferredAngle_representation_container')
+		utils.addNodeToContainer(self.containerName, container)
+		for node in mc.container(container, q=True, nodeList=True):
+			mc.rename(node, joint+'_'+node, ignoreShape=True)
+		# organize the control object into our outliner
+		control = joint + '_preferredAngle_representation'
+		controlName = utils.stripAllNamespaces(control)[1]
+		mc.container(self.containerName, edit=True, publishAndBind=[container+'.axis', controlName+'_axis'])
+		
+		# group and constrain the control to the joint it's going to influence
+		controlGrp = mc.group(control, n=joint+'preferredAngle_parentConstraintGrp', absolute=True)
+		mc.parent(controlGrp, self.preferredAngleRepresentationGrp, absolute=True)
+		containedNodes = [controlGrp]
+		containedNodes.append(mc.parentConstraint(joint, controlGrp, mo=False)[0])
+		
+		# to make the new preferred angle representation follow an orienationation control 
+		if bChildOrientationControl:
+			rotateXGrp = mc.group(control, n=control+'_rotateX_grp', absolute=True)
+			orientationControl = self.getOrientationControl(joint)
+			mc.connectAttr(orientationControl+'.rx', rotateXGrp+'.rx')
+			containedNodes.append(rotateXGrp)
+
+		# constrain the control group to the provided scaleTarget
+		containedNodes.append(mc.scaleConstraint(scaleTarget, controlGrp, mo=False)[0])
+		# cleanup
+		utils.addNodeToContainer(container, containedNodes)
+
+		return control

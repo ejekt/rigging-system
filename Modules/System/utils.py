@@ -73,6 +73,8 @@ def checkNamespaceIndex(sBaseName):
 
 
 def stripLeadingNamespace(sNode):
+	# returns [0] the first namespace in the node
+	# [1] everything after the first ":"
 	if str(sNode).find(':') == -1:
 		return None
 
@@ -81,6 +83,8 @@ def stripLeadingNamespace(sNode):
 	return [splitString[0], splitString[2]]
 
 def stripAllNamespaces(sNode):
+	# returns [0] all the namespaces in the node. Everything before the last ":"
+	# [1] the last name. What's after the last ":"
 	if str(sNode).find(':') == -1:
 		return none
 
