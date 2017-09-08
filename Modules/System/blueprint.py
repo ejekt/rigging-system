@@ -7,7 +7,7 @@ reload(utils)
 from functools import partial
 
 
-class Blueprint:
+class Blueprint(object):
 	def __init__(self, sModuleName, sName, aJointInfo, sHookObj):
 		# module namespace name initialized
 		self.moduleName = sModuleName
