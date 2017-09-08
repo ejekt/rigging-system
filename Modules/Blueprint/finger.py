@@ -12,13 +12,15 @@ DESCRIPTION = 'Creates 5 joints, defining a finger. Ideal use: finger'
 ICON = os.environ['RIGGING_TOOL_ROOT'] + '/Icons/_finger.xpm'
 
 class Finger(bp.Blueprint):
+	class_name = CLASS_NAME
 	def __init__(self, sUserSpecifiedName, sHookObj):
-
-		jointInfo = [ ['root_joint', [0.0,0.0,0.0]],['knuckle_1_joint', [4.0,0.0,0.0]],
+		self.jointInfo = [ ['root_joint', [0.0,0.0,0.0]],['knuckle_1_joint', [4.0,0.0,0.0]],
 						['knuckle_2_joint', [8.0,0.0,0.0]], ['knuckle_3_joint', [12.0,0.0,0.0]],
 						['end_joint', [16.0,0.0,0.0]] ]
 		
-		bp.Blueprint.__init__(self, CLASS_NAME, sUserSpecifiedName, jointInfo, sHookObj)
+		super(Finger, self).__init__(self.class_name, sUserSpecifiedName, self.jointInfo, sHookObj)
+		
+		#bp.Blueprint.__init__(self, CLASS_NAME, sUserSpecifiedName, jointInfo, sHookObj)
 
 
 	def install_custom(self, joints):
