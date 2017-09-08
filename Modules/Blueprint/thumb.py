@@ -14,11 +14,16 @@ DESCRIPTION = 'Creates 4 joints, defining a thumb. Ideal use: thumb'
 ICON = os.environ['RIGGING_TOOL_ROOT'] + '/Icons/_thumb.xpm'
 
 class Thumb(finger.Finger):
+	
+	class_name = CLASS_NAME
+	
 	def __init__(self, sUserSpecifiedName, sHookObj):
-		super(finger, self).init()
 		#! thumb init doesn't work unless Finer.__init__ has a super(self)
 		#! but then Finger won't work
-		jointInfo = [ ['root_joint', [0.0,0.0,0.0]],['knuckle_1_joint', [4.0,0.0,0.0]],
+		self.jointInfo = [ ['root_joint', [0.0,0.0,0.0]],['knuckle_1_joint', [4.0,0.0,0.0]],
 						['knuckle_2_joint', [8.0,0.0,0.0]], ['end_hoint', [12.0,0.0,0.0]] ]
 		
-		bp.Blueprint.__init__(self, CLASS_NAME, sUserSpecifiedName, jointInfo, sHookObj)
+		
+		super(Thumb, self).__init__(sUserSpecifiedName, sHookObj)
+		
+		#bp.Blueprint.__init__(self, CLASS_NAME, sUserSpecifiedName, jointInfo, sHookObj)
