@@ -2,7 +2,6 @@ import maya.cmds as mc
 from functools import partial
 import os
 import System.utils as utils
-reload(utils)
 
 class MirrorModule:
 	def __init__(self):

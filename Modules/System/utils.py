@@ -58,7 +58,7 @@ def findHighestIndex(aNames, sBaseName):
 				iIndex = int(suffix)
 				if iIndex > iHighestValue:
 					iHighestValue = iIndex
-	print 'highest value found : ' + str(iHighestValue)
+	print 'highest value found for base name {} is: {}'.format(sBaseName, str(iHighestValue))
 	return iHighestValue
 
 
@@ -86,7 +86,7 @@ def stripAllNamespaces(sNode):
 	# returns [0] all the namespaces in the node. Everything before the last ":"
 	# [1] the last name. What's after the last ":"
 	if str(sNode).find(':') == -1:
-		return none
+		return None
 
 	splitString = str(sNode).rpartition(':')
 
@@ -230,3 +230,88 @@ def doesBpUserSpecifiedNameExist(sName):
 			names.append(namespace.partition('__')[2])
 
 	return sName in names
+
+
+def Rp_2segment_stretchy_IK(rootJoint, hingeJoint, endJoint, container=None, scaleCorrectionAttribute=None):
+	''' Function that takes 3 joints and creates a RPsolver IK system on them that is both stretchy and 
+	stays on a single plane.
+	'''
+	moduleNamespaceInfo = stripAllNamespaces(rootJoint)
+	moduleNamespace = ''
+	if moduleNamespaceInfo != None:
+		moduleNamespace = moduleNamespaceInfo[0]
+
+	rootLocation = mc.xform(rootJoint, q=True, ws=True, t=True)
+	elbowLocation = mc.xform(hingeJoint, q=True, ws=True, t=True)
+	endLocation = mc.xform(endJoint, q=True, ws=True, t=True)
+
+	ikNodes = mc.ikHandle(sj=rootJoint, ee=endJoint, n=rootJoint+'_ikHandle', solver='ikRPsolver')
+	ikNodes[1] = mc.rename(ikNodes[1], rootJoint+'_ikEffector')
+	ikEffector = ikNodes[1]
+	ikHandle = ikNodes[0]
+
+	mc.setAttr(ikHandle+'.v', 0)
+
+	rootLoc = mc.spaceLocator(n=rootJoint+'_positionLoc')[0]
+	mc.xform(rootLoc, ws=True, absolute=True, translation=rootLocation)
+	mc.parent(rootJoint, rootLoc, absolute=True)
+
+	endLoc = mc.spaceLocator(n=ikHandle+'_positionLoc')[0]
+	mc.xform(endLoc, ws=True, absolute=True, translation=endLocation)
+	mc.parent(ikHandle, endLoc, absolute=True)
+
+	elbowLoc = mc.spaceLocator(n=hingeJoint+'_positionLoc')[0]
+	mc.xform(elbowLoc, ws=True, absolute=True, translation=elbowLocation)
+	elbowLocConstraint = mc.poleVectorConstraint(elbowLoc, ikHandle)[0]
+
+	# setup stretchyness
+	utilityNodes = []
+	for locators in ((rootLoc, elbowLoc, hingeJoint), (elbowLoc, endLoc, endJoint)):
+		from math import fabs 		# floating point absolute
+		
+		startLocNamespaceInfo = stripAllNamespaces(locators[0])
+		startLocWithoutNamespace = ''
+		if startLocNamespaceInfo != None:
+			startLocWithoutNamespace = startLocNamespaceInfo[1]
+
+		endLocNamespaceInfo = stripAllNamespaces(locators[1])
+		endLocWithoutNamespace = ''
+		if endLocNamespaceInfo != None:
+			endLocWithoutNamespace = endLocNamespaceInfo[1]
+
+		startLocShape = locators[0]+'Shape'
+		endLocShape = locators[1]+'Shape'
+		# distance between
+		distNode = mc.shadingNode('distanceBetween', asUtility=True, 
+					n=moduleNamespace+':distBetween_'+startLocWithoutNamespace+'_'+endLocWithoutNamespace)
+		mc.connectAttr(startLocShape+'.worldPosition[0]', distNode+'.point1')
+		mc.connectAttr(endLocShape+'.worldPosition[0]', distNode+'.point2')
+		utilityNodes.append(distNode)	
+		# scale factor
+		scaleFactor = mc.shadingNode('multiplyDivide', asUtility=True, 
+					n=distNode+'_scaleFactor')
+		mc.setAttr(scaleFactor+'.operation', 2)		# divide
+		originalLength = mc.getAttr(locators[2]+'.tx')
+		mc.connectAttr(distNode+'.distance', scaleFactor+'.input1X')
+		mc.setAttr(scaleFactor+'.input2X', originalLength)
+		utilityNodes.append(scaleFactor)
+
+		translationDriver = scaleFactor + '.outputX'
+
+		# scale factor is mutiplied by the abs(originaLength) and that drives the end joints translateX
+		translateX = mc.shadingNode('multiplyDivide', asUtility=True, 
+					n=distNode+'_translationValue')
+		mc.setAttr(translateX+'.input1X', fabs(originalLength))
+		mc.connectAttr(translationDriver, translateX+'.input2X')
+		mc.connectAttr(translateX+'.outputX', locators[2]+'.tx')
+		utilityNodes.append(translateX)
+
+	if container != None:
+		containedNodes = list(utilityNodes)
+		containedNodes.extend(ikNodes)
+		containedNodes.extend( [rootLoc, elbowLoc, EndLoc])
+		containedNodes.append(elbowLocConstraint)
+
+		addNodeToContainer(container, containedNodes, ihb=True)
+
+	return (rootLoc, elbowLoc, endLoc, utilityNodes)

@@ -1,6 +1,6 @@
 import os
-import naming as n
-reload(n)
+#import naming as n
+#reload(n)
 import maya.cmds as mc
 import System.utils as utils
 reload(utils)
@@ -8,7 +8,7 @@ from functools import partial
 
 
 class Blueprint(object):
-	def __init__(self, sModuleName, sName, aJointInfo, sHookObj):
+	def __init__(self, sModuleName, sName, aJointInfo, sHookObj, *args):
 		# module namespace name initialized
 		self.moduleName = sModuleName
 		self.userSpecifiedName = sName
@@ -33,15 +33,15 @@ class Blueprint(object):
 	###############################################################################################
 	# Methods intended for overriding by derived classes
 	def install_custom(self, joints):
-		print "install_custom() isn't implemented"
+		print "install_custom isn't implemented"
 
 
 	def Ui_custom(self):
-		print 'no custom ui - this is ok'
+		print 'Ui_custom method is not implemented - this is ok'
 
 
 	def mirror_custom(self, sOriginalModule):
-		print 'mirror_custom() method is not implemented by derived class'
+		print 'mirror_custom method is not implemented by derived class'
 
 
 	###############################				BASE CLASS 				###########################
@@ -107,8 +107,7 @@ class Blueprint(object):
 			if self.rotationFunction == 'behavior':
 				mirrorBehavior = True
 			# mirror the joints using maya command
-			print '\t MIRRORING'
-			print mirrorBehavior
+			print '\t # MIRRORING #' 
 			mirroredNodes = mc.mirrorJoint(joints[0], 
 										mirrorXY=mirrorXY, 
 										mirrorYZ=mirrorYZ, 
@@ -345,6 +344,37 @@ class Blueprint(object):
 
 		return orientationControl
 
+
+	def createSingleJointOrientationControlAtJoint(self, joint):
+		# import the control group file and rename to module specs
+		controlGrpFile = os.environ['RIGGING_TOOL_ROOT']+'/ControlObjects/Blueprint/singleJointOrientation_control.ma'
+		mc.file(controlGrpFile, i=True)
+		container = mc.rename('singleJointOrientation_control_container', joint+'singleJointOrientation_control_container')
+		utils.addNodeToContainer(self.containerName, container)
+		# rename the nodes
+		for node in mc.container(container, q=True, nodeList=True):
+			mc.rename(node, joint+'_'+node, ignoreShape=True)
+		
+		# snap the new orientation control to the blueprint translation control 
+		control = joint + '_singleJointOrientation_control'
+		translationControl = self.getTranslationControl(joint)
+		mc.parent(control, self.moduleTransform, absolute=True)
+		pCon = mc.pointConstraint(translationControl, control, mo=False, n=control+'_pCon')[0]
+		utils.addNodeToContainer(container, pCon)
+		# orient the control based on the joint
+		jointOrient = mc.xform(joint, q=True, ws=True, rotation=True)
+		mc.xform(control, ws=True, absolute=True, rotation=jointOrient)
+
+		# publish attr to containers
+		jointNameWithoutNs = utils.stripLeadingNamespace(joint)[1]
+		attrName = jointNameWithoutNs + '_R'
+		mc.container(container, e=True, publishAndBind=[control+'.rotate', attrName])
+		mc.container(self.containerName, e=True, publishAndBind=[container+'.'+attrName, attrName])
+
+		return control
+
+
+
 	#
 	#		GET tools
 	#
@@ -361,6 +391,11 @@ class Blueprint(object):
 
 	def getPreferredAngleControl(self, jointName):
 		return jointName + '_preferredAngle_representation'
+
+
+	def getSingleJointOrientationControl(self, jointName):
+		return jointName + '_singleJointOrientation_control'
+
 
 
 	def getJoints(self):
@@ -1082,6 +1117,7 @@ class Blueprint(object):
 			mc.addAttr(dt='string', ln=linkedAttr, k=False)
 			mc.setAttr(moduleGrp+'.'+linkedAttr, attrValue, type='string')
 
+		mc.dgdirty(a=True)
 		# lock up
 		for c in [self.originalModule+':module_container', self.containerName]:
 			mc.lockNode(c, lock=True, lockUnpublished=True)

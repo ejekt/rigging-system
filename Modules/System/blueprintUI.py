@@ -133,6 +133,8 @@ class Blueprint_UI:
 		mc.separator()
 
 
+	###############################				INSTALL				###########################
+
 	def createModuleInstallButton(self, module):
 		# initialize a new instance of the module class and make a button to run it
 		mod = __import__('Blueprint.' + module, {}, {}, [module])
@@ -158,6 +160,7 @@ class Blueprint_UI:
 		mc.setParent(self.dUiElements['moduleListColumn'])
 
 
+
 	# 		call to install any module
 	def installModule(self, module, *args):
 		''' base blueprint module installer '''
@@ -172,7 +175,8 @@ class Blueprint_UI:
 				namespaces[i]=namespaces[i].partition('__')[2]
 
 		iSuffix = utils.findHighestIndex(namespaces, sBaseName) + 1
-		userSpecName = sBaseName + str(iSuffix)
+		userSpecifiedName = sBaseName + str(iSuffix)
+		print 'using userSpecifiedName ', userSpecifiedName
 
 		# get hook object or None
 		hookObj = self.findHookObjFromSelection()
@@ -181,14 +185,17 @@ class Blueprint_UI:
 		mod = __import__('Blueprint.' + module, {}, {}, [module])
 		reload(mod)	
 		moduleClass = getattr(mod, mod.CLASS_NAME)
-		moduleInstance = moduleClass(userSpecName, hookObj)
+		moduleInstance = moduleClass(userSpecifiedName, hookObj)
+		print 'moduleInstance name ', moduleInstance.userSpecifiedName
 		moduleInstance.install()
 
-		#moduleTransform = mod.CLASS_NAME + '__' + userSpecName + ':module_transform'
+		#moduleTransform = mod.CLASS_NAME + '__' + self.userSpecifiedName + ':module_transform'
 		moduleTransform = moduleInstance.moduleTransform
 		mc.select(moduleTransform, r=True)
 		mc.setToolTo('moveSuperContext')
 
+
+	###############################				LOCK				###########################
 
 
 	def lock(self, *args):
@@ -262,7 +269,7 @@ class Blueprint_UI:
 
 
 
-
+	###############################				SCRIPT JOB				###########################
 
 	# SCRIPTJOB EVERYTIME SELECTION CHANGES
 	def createScriptJob(self):
