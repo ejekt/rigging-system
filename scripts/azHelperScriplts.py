@@ -431,3 +431,215 @@ def createNewProjectDirs(sPath, sName):
     os.makedirs(sMakeDirPath + '/lib')
     
 createNewProjectDirs(sPath, sName)
+
+
+import maya.cmds as mc
+
+ 
+def createIk(name='L_hip', solver='ikRPsolver', startJoint='', endEffector='', poleVector='', parent='', ctrl='', consType='parent', v=1):
+    '''
+    Create ikRP solver.
+
+    @inParam name - string, name of ikHandle, suffix of _ikHandle will be added
+    @inParam solver - string, type of ikSolver, choose between ikRPsolver or ikSCsolver
+    @inParam startJoint - string, start joint for ikRP solver
+    @inParam endEffector - string, end joint for ikRP solver
+    @inParam poleVector - string, object used for poleVector, usually a control is given
+    @inParam parent - string, parent ikHandle under this
+    @inParam ctrl - string, parent constrain ik to control
+    @inParam consType - string, type of constraint between ctrl and ikHandle, types are parent, point or orient
+    @inParam v - int, visibility of ikHandle
+
+    @procedure rig.createIk(name='L_hip', solver='ikRPsolver', startJoint=env[0], endEffector=env[1], poleVector='trap_poleVector_loc', parent=otherNull, ctrl='head_5_env', consType='parent', v=0)
+    '''
+    #Set preffered angle.
+    mc.joint(startJoint, e=1, spa=1)
+
+    ik = ''
+    if solver == 'ikRPsolver':
+        ik = mc.ikHandle(n=name+'_ikHandle', sj=startJoint, ee=endEffector, sol='ikRPsolver')[0]
+
+        if poleVector:
+            mc.poleVectorConstraint(poleVector, ik)
+    elif solver == 'ikSCsolver':
+        ik = mc.ikHandle(n=name+'_ikHandle', sj=startJoint, ee=endEffector, sol='ikSCsolver')[0]
+
+    ikPos = mc.xform(ik, q=1, t=1, ws=1)
+    ikNull = mc.group(n=ik.replace('_ikHandle', 'IkHandle_null'), em=1)
+    mc.move(ikPos[0], ikPos[1], ikPos[2], ikNull, r=1)
+    mc.parent(ikNull, parent)
+    mc.parent(ik, ikNull)
+
+    if ctrl is not '':
+        if consType == 'parent' or consType == 'parentConstraint':
+            mc.parentConstraint(ctrl, ik, mo=1)
+        elif consType == 'point' or consType == 'pointConstraint':
+            mc.pointConstraint(ctrl, ik, mo=1)
+        elif consType == 'orient' or consType == 'orientConstraint':
+            mc.orientConstraint(ctrl, ik, mo=1)
+
+    mc.setAttr(ik+'.v', v)
+
+    return [ik, ikNull]
+
+def lockAndHideAttr(obj, attrs):
+    '''
+    Lock and hide attributes of given object.
+
+    @inParam obj - string, object to lock attributes for
+    @inParam attrs - list, attributes to lock
+
+    @procedure rig.lockAndHideAttr(ctrl, ['tx','ty','tz','rx','ry','rz','sx','sy','sz','v'])
+    '''
+    for attr in attrs:
+        if mc.attributeQuery(attr, node=obj, ex=1):
+            mc.setAttr(obj+'.'+attr, k=0, cb=0, l=1)
+        else:
+            print 'Attribute does not exist for '+obj+' - '+attr
+
+
+#########SPACE_SWITCH####################
+def addSpaceSwitch( ctrl, attrName, enums, slave, targets, constraintType, maintainOffset ):
+    #ctrl = 'toto_ctrl'
+    #attrName = 'spaceSwicth'
+    #enums=['world','hand','local']
+    #slave='toto_zro'
+    #targets=['driver1','driver1','driver1']
+    #constraintType='parentConstraint'
+    #maintainOffset=1
+    #rem_addSpaceSwitch( ctrl, attrName, enums, slave, targets, constraintType, maintainOffset )
+    spaceOffs = []
+    constraint = ''    
+    
+    #new name
+    baseName = ctrl.replace('_ctrl', '')    
+    
+    #target space groups
+    for i in range( len(enums) ):
+        if maintainOffset == 0:
+            spaceOffs.append(targets[i])
+        else:
+            grp = cmds.group( em=1, n= baseName + 'Space_' + enums[i] + '_null' )
+            cmds.delete( cmds.parentConstraint( slave, grp ) )
+            cmds.parentConstraint( targets[i], grp, mo=1 )
+            spaceOffs.append(grp)
+
+    #add constraints to targets space groups
+    for t in spaceOffs:
+        constraint = pm.mel.eval( constraintType+ '"' +t+ '" "' +slave+'"' )
+    attrs = cmds.listAttr( constraint, ud=1 )
+    constraint = constraint[0]   
+    
+    #enum attribute
+    enumFlat = ':'.join(enums)
+    if cmds.objExists(ctrl+'.'+attrName):
+        cmds.warning('"'+ctrl+'.'+attrName+'" exist, using the exitant one, check if attribute match you\'re expecting')
+        cmds.addAttr( ctrl+'.'+attrName, e=1, enumName=enumFlat )
+    else:
+        cmds.addAttr( ctrl, ln= attrName, at='enum', k=1, en= enumFlat )
+    
+    #connect enum attrs to constraint targets
+    for i in range( len(enums) ):
+        for j in range( len(enums) ):
+            val = 0
+            if i == j:
+                val = 1
+            cmds.setDrivenKeyframe( constraint+ '.' +attrs[j], cd=ctrl+ '.' +attrName , dv=i, v=val )
+            
+    return spaceOffs  
+
+
+
+def addDoubleAttr(ctrl='', attr='', nn='', min=-10000, max=10000, dv=0, k=1, cb=1, l=False):
+    '''
+    Adds double attribute to object.
+
+    @inParam ctrl - string, object to add attribute to
+    @inParam attr - string, name of attribute
+    @inParam nn - string, nice name of attribute
+    @inParam min - float, minimum value of attribute
+    @inParam max - float, maximum value of attribute
+    @inParam dv - float, default value value of attribute
+    @inParam k - int, attribute is keyable if on
+    @inParam cb - int, attribute appears in cb if on
+    @inParam l - boolean, lock attr if true
+
+    @procedure rig.addDoubleAttr(ctrl=ctrl, attr='offset', min=0, max=1, dv=0)
+    '''
+    if nn == '':
+        mc.addAttr(ctrl, ln=attr, at='double', min=min, max=max, dv=dv)
+    else:
+        mc.addAttr(ctrl, ln=attr, nn=nn, at='double', min=min, max=max, dv=dv)
+
+    if cb:
+        mc.setAttr(ctrl+'.'+attr, e=1, cb=1)
+    if k:
+        mc.setAttr(ctrl+'.'+attr, e=1, k=1)
+    if l:
+        mc.setAttr(ctrl+'.'+attr, l=1)
+
+    return ctrl+'.'+attr
+
+
+import maya.cmds as mc
+########    INSERT AN INTERMEDIATE SCULPT GEO AND CONNECT INTO NETWORK      ##################
+def insertSculptGeo():
+    # get selection, it's shape in inMesh plug
+    sel = mc.ls(sl=True)
+    if not sel:
+        print 'nothing is selected dumb ass'
+        return
+    outGeo = sel[0]
+    outGeoShape = mc.listRelatives(outGeo, s=True)[0]
+    inputGeoPlug = mc.connectionInfo(outGeoShape+'.inMesh', sourceFromDestination=True)
+    geoParent = cmds.listRelatives(outGeo, p=True)[0]
+    in_deform = cmds.listConnections(outGeo + ".inMesh")[0]
+
+    # Duplicate the geo to create the sculpt meshes
+    sculpt_shape = cmds.createNode("mesh")
+    sculpt_mesh = cmds.listRelatives(sculpt_shape, parent=True)[0]
+    sculpt_mesh = cmds.rename(sculpt_mesh, outGeo.replace("_geo", "_sculpt"))
+    sculpt_mesh = cmds.parent(sculpt_mesh, geoParent)[0]
+
+    oldPosition = cmds.xform(outGeo, q=True, matrix=True)
+    cmds.xform(sculpt_mesh, matrix=oldPosition)
+    # make connections
+    mc.connectAttr(inputGeoPlug, sculpt_mesh+'.inMesh')
+    mc.connectAttr(sculpt_mesh+'.outMesh', outGeoShape+'.inMesh', f=True)
+    print '### Duplicated {0} as {1} and connected it back into {0} inMesh'.format(outGeo, sculpt_mesh)
+    
+
+
+
+# collect what to turn off
+drones = ['droneKaijuSkin01:', 'droneKaijuSkin02:', 'droneKaijuSkin03:']
+turnOffP2P = []
+turnOffNx = []
+for drone in drones:
+    allOutputs = mc.ls(drone+'*output')
+    turnOffOutputs = []
+    for o in allOutputs:
+        if 'skinSim' in o or 'pipesSim' in o:
+            print o, '- don"t use this'
+            continue
+        turnOffOutputs.append(o)
+    print turnOffOutputs
+    children = mc.listRelatives(turnOffOutputs, c=True)     # output meshes
+    # collect point2point deformers
+    for c in children:
+        turnOffP2P.append(mc.listConnections(c+'Shape', t='dnPoint2PointDeformer' )[0])
+
+# collect nuclei to turn off
+allNx = mc.ls(type='nucleus')
+for n in allNx:
+    if 'skin' in n or 'pipes' in n:
+        print n, '- don"t use this'
+        continue
+    turnOffNx.append(n)
+
+# turn shit off
+for p2p in turnOffP2P:
+    mc.setAttr(p2p+'.envelope', 0)
+for nx in turnOffNx:
+    mc.setAttr(nx+'.enable', 0)
+    
