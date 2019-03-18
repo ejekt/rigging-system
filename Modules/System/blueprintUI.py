@@ -1,8 +1,5 @@
 import maya.cmds as mc
 from functools import partial
-
-import naming as n
-reload(n)
 import System.utils as utils
 reload(utils)
 
@@ -20,7 +17,7 @@ class Blueprint_UI:
 			mc.deleteUI('bluePrintUiWindow')
 		# setup the UI window
 		windowWidth = 400
-		windowHeight = 300 # 600
+		windowHeight = 600 # 600
 		self.dUiElements['window']  = mc.window('bluePrintUiWindow', 
 									w=windowWidth, h=windowHeight, t='Blueprint UI',sizeable=False)
 		self.dUiElements['topLevelColumn']  = mc.columnLayout(adjustableColumn=True, columnAlign='center')

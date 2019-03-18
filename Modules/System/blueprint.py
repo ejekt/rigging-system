@@ -1,6 +1,4 @@
 import os
-#import naming as n
-#reload(n)
 import maya.cmds as mc
 import System.utils as utils
 reload(utils)

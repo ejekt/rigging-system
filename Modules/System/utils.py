@@ -193,6 +193,7 @@ def basicStretchyIK(sRootJoint,
 
 	return dReturn
 
+
 def forceSceneUpdate():
 	mc.setToolTo('moveSuperContext')
 	nodes = mc.ls()
@@ -202,6 +203,7 @@ def forceSceneUpdate():
 
 	mc.select(cl=True)
 	mc.setToolTo('selectSuperContext')
+
 
 def addNodeToContainer(sContainer, sNodesIn, includeShapes=False, ihb=False, force=False):
 	import types
@@ -218,7 +220,8 @@ def addNodeToContainer(sContainer, sNodesIn, includeShapes=False, ihb=False, for
 		node_conversionNodes = mc.ls(node_conversionNodes, type='unitConversion')
 		conversionNodes.extend(node_conversionNodes)
 	nodes.extend(conversionNodes)
-	mc.container(sContainer, edit=True, addNode=nodes, ihb=ihb, includeShapes=includeShapes, force=force)
+	mc.container(sContainer, edit=True, addNode=nodes, includeHierarchyBelow=ihb, includeShapes=includeShapes, force=force)
+
 
 def doesBpUserSpecifiedNameExist(sName):
 	mc.namespace(setNamespace=':')
@@ -309,9 +312,9 @@ def Rp_2segment_stretchy_IK(rootJoint, hingeJoint, endJoint, container=None, sca
 	if container != None:
 		containedNodes = list(utilityNodes)
 		containedNodes.extend(ikNodes)
-		containedNodes.extend( [rootLoc, elbowLoc, EndLoc])
+		containedNodes.extend( [rootLoc, elbowLoc, endLoc])
 		containedNodes.append(elbowLocConstraint)
 
-		addNodeToContainer(container, containedNodes, ihb=True)
+		# addNodeToContainer(container, containedNodes, ihb=True)
 
 	return (rootLoc, elbowLoc, endLoc, utilityNodes)
