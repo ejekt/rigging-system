@@ -11,16 +11,14 @@ ICON = os.environ['RIGGING_TOOL_ROOT'] + '/Icons/_hinge.xpm'
 
 
 class HingeJoint(bp.Blueprint):
-    class_name = CLASS_NAME
 
-    def __init__(self, sUserSpecifiedName, sHookObj, *args):
-        jointInfo = [['root_joint', [0.0, 0.0, 0.0]], ['hinge_joint', [4.0, 0.0, -1.0]],
-                     ['end_joint', [8.0, 0.0, 0.0]]]
-
+    def __init__(self, CLASS_NAME, sUserSpecifiedName, sHookObj, *args):
         # self.mirrored = False
+        super(HingeJoint, self).__init__(CLASS_NAME, sUserSpecifiedName, sHookObj, *args)
+        # bp.Blueprint.__init__(self, CLASS_NAME, sUserSpecifiedName, sHookObj)
 
-        # super(bp.Blueprint).__init__(self.class_name, sUserSpecifiedName, jointInfo, sHookObj, *args)
-        bp.Blueprint.__init__(self, CLASS_NAME, sUserSpecifiedName, jointInfo, sHookObj)
+        self.jointInfo = [['root_joint', [0.0, 0.0, 0.0]], ['hinge_joint', [4.0, 0.0, -1.0]],
+                     ['end_joint', [8.0, 0.0, 0.0]]]
 
 
     def install_custom(self, joints, *args):

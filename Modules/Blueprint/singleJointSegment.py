@@ -13,21 +13,22 @@ ICON = os.environ["RIGGING_TOOL_ROOT"] + '/Icons/_singleJointSeg.xpm'
 
 
 class SingleJointSegment(bp.Blueprint):
-	def __init__(self, sUserSpecifiedName, hookObj):
+	def __init__(self, CLASS_NAME, sUserSpecifiedName, sHookObj, *args):
 		''' blueprint module of a single joint segment pointng down X.
 		It includes a translation control per joint, a stretchy IK and 
 		with an orientation control between them.
 
 	    @param sUserSpecifiedName 	- name says it all
-	    @param hookObj 				- string - name of the object to hook to	
-    	
+	    @param sHookObj 				- string - name of the object to hook to
     	@procedure
 		'''
-		jointInfo = [['root_joint', [0.0,0.0,0.0]], ['end_joint',[4.0,0.0,0.0]]]
+		super(SingleJointSegment, self).__init__(CLASS_NAME, sUserSpecifiedName, sHookObj, *args)
+
+		self.jointInfo = [['root_joint', [0.0,0.0,0.0]], ['end_joint',[4.0,0.0,0.0]]]
 
 		#print sUserSpecifiedName
 
-		bp.Blueprint.__init__(self, CLASS_NAME, sUserSpecifiedName, jointInfo, hookObj)
+		# bp.Blueprint.__init__(self, CLASS_NAME, sUserSpecifiedName, jointInfo, hookObj)
 
 
 	def install_custom(self, joints):

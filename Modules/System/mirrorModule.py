@@ -68,7 +68,7 @@ class MirrorModule:
 		reload(mod)
 
 		moduleClass = getattr(mod, mod.CLASS_NAME)
-		moduleInstance = moduleClass('null', None)
+		moduleInstance = moduleClass('', 'null', None)
 		# will return true or false based on the module being instantiated
 		return moduleInstance.canModuleBeMirrored()
 
@@ -273,7 +273,7 @@ class MirrorModule:
 			mod = __import__('Blueprint.'+module[5], {},{}, [module[5]])
 			reload(mod)
 			moduleClass = getattr(mod, mod.CLASS_NAME)
-			moduleInst = moduleClass(userSpecifiedName, None)
+			moduleInst = moduleClass(mod.CLASS_NAME, userSpecifiedName, None)
 			# find the hook object and figure out what module it is
 			hookObject = moduleInst.findHookObject()
 			newHookObject = None
@@ -306,7 +306,7 @@ class MirrorModule:
 			mod = __import__('Blueprint.'+module[5], {},{}, [module[5]])
 			reload(mod)
 			moduleClass = getattr(mod, mod.CLASS_NAME)
-			moduleInst = moduleClass(newUserSpecifiedName, None)
+			moduleInst = moduleClass(mod.CLASS_NAME, newUserSpecifiedName, None)
 			# run the blueprint mirror method
 			moduleInst.mirror(module[0], module[2], module[3], module[4])
 
@@ -322,7 +322,7 @@ class MirrorModule:
 			mod = __import__('Blueprint.'+module[5], {},{}, [module[5]])
 			reload(mod)
 			moduleClass = getattr(mod, mod.CLASS_NAME)
-			moduleInst = moduleClass(newUserSpecifiedName, None)
+			moduleInst = moduleClass(mod.CLASS_NAME, newUserSpecifiedName, None)
 
 			moduleInst.rehook(module[6])
 			hookConstrained = module[7]

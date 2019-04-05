@@ -13,14 +13,13 @@ ICON = os.environ['RIGGING_TOOL_ROOT'] + '/Icons/_rootTxfrm.xpm'
 
 class RootTransform(singleOrientableJoint.SingleOrientableJoint):
 
-	class_name = CLASS_NAME
- 
-	def __init__(self, sUserSpecifiedName, sHookObj, *args):
-		#! thumb init doesn't work unless Finer.__init__ has a super(self)
-		#! but then Finger won't work
-		jointInfo = [ ['joint', [0.0,0.0,0.0]] ]
-		
-		super(RootTransform, self).__init__(self.class_name, sUserSpecifiedName, jointInfo, sHookObj, *args)
+
+	def __init__(self, CLASS_NAME, sUserSpecifiedName, sHookObj, *args):
+
+		super(RootTransform, self).__init__(CLASS_NAME, sUserSpecifiedName, sHookObj, *args)
+
+		self.jointInfo = [ ['joint', [0.0,0.0,0.0]] ]
+
 
 
 	def lockPhase1(self):

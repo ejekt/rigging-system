@@ -1,5 +1,6 @@
 import maya.cmds as mc
-import System.blueprint as bp 
+import System.blueprint as bp
+reload(bp)
 import System.utils as utils
 import os
 
@@ -11,16 +12,14 @@ ICON = os.environ['RIGGING_TOOL_ROOT'] + '/Icons/_finger.xpm'
 
 class Finger(bp.Blueprint):
 
-	class_name = CLASS_NAME
+	def __init__(self, CLASS_NAME, sUserSpecifiedName, sHookObj, *args):
 
-	def __init__(self, sUserSpecifiedName, sHookObj, *args):
-
-		jointInfo = [ ['root_joint', [0.0,0.0,0.0]],['knuckle_1_joint', [4.0,0.0,0.0]],
-						['knuckle_2_joint', [8.0,0.0,0.0]], ['knuckle_3_joint', [12.0,0.0,0.0]],
-						['end_joint', [16.0,0.0,0.0]] ]
-		
-		super(Finger, self).__init__(self.class_name, sUserSpecifiedName, jointInfo, sHookObj, *args)
+		super(Finger, self).__init__(CLASS_NAME, sUserSpecifiedName, sHookObj, *args)
 		#bp.Blueprint.__init__(self, CLASS_NAME, sUserSpecifiedName, jointInfo, sHookObj)
+
+		self.jointInfo = [['root_joint', [0.0, 0.0, 0.0]], ['knuckle_1_joint', [4.0, 0.0, 0.0]],
+					 ['knuckle_2_joint', [8.0, 0.0, 0.0]], ['knuckle_3_joint', [12.0, 0.0, 0.0]],
+					 ['end_joint', [16.0, 0.0, 0.0]]]
 
 
 	def install_custom(self, joints):

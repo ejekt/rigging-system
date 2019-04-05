@@ -182,7 +182,8 @@ class Blueprint_UI:
 		mod = __import__('Blueprint.' + module, {}, {}, [module])
 		reload(mod)	
 		moduleClass = getattr(mod, mod.CLASS_NAME)
-		moduleInstance = moduleClass(userSpecifiedName, hookObj)
+		print '!! ', mod.CLASS_NAME
+		moduleInstance = moduleClass(mod.CLASS_NAME, userSpecifiedName, hookObj)
 		print 'moduleInstance name ', moduleInstance.userSpecifiedName
 		moduleInstance.install()
 
@@ -247,7 +248,7 @@ class Blueprint_UI:
 			reload(mod)
 
 			cModuleClass = getattr(mod, mod.CLASS_NAME)
-			cModuleInst = cModuleClass(module[1], None)		# (sUserSpecifiedName, hookObj)
+			cModuleInst = cModuleClass(mod.CLASS_NAME, module[1], None)		# (sUserSpecifiedName, hookObj)
 			dModuleInfo = cModuleInst.lockPhase1()
 			moduleInstances.append( (cModuleInst, dModuleInfo) )
 
@@ -343,7 +344,7 @@ class Blueprint_UI:
 				reload(mod)
 
 				moduleClass = getattr(mod, mod.CLASS_NAME)
-				self.moduleInstance = moduleClass(userSpecifiedName, None)
+				self.moduleInstance = moduleClass(mod.CLASS_NAME, userSpecifiedName, None)
 				
 				mc.button(self.dUiElements['mirrorModuleBtn'], e=True, enable=True, l='Mirror Module')
 				mc.button(self.dUiElements['groupSelectedBtn'], e=True, enable=controlEnable)

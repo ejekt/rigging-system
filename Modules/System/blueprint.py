@@ -6,7 +6,7 @@ from functools import partial
 
 
 class Blueprint(object):
-	def __init__(self, sModuleName, sName, aJointInfo, sHookObj, *args):
+	def __init__(self, sModuleName, sName, sHookObj, *args):
 		# module namespace name initialized
 		self.moduleName = sModuleName
 		self.userSpecifiedName = sName
@@ -14,7 +14,7 @@ class Blueprint(object):
 		self.moduleNamespace = self.moduleName + '__' + self.userSpecifiedName
 		self.containerName = self.moduleNamespace + ":module_container"
 
-		self.jointInfo = aJointInfo			# list of touples [('jointName', [iX,iY,iZ]), ] 
+		self.jointInfo = []  # = aJointInfo			# list of touples [('jointName', [iX,iY,iZ]), ]
 
 		self.hookObject = None
 		if sHookObj:
