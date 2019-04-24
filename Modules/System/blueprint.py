@@ -699,20 +699,17 @@ class Blueprint(object):
 		if mc.objExists(joint):
 			jointName = utils.stripAllNamespaces(joint)[1]
 			attrControlGrp = mc.attrControlGrp(attribute=joint+'.rotateOrder', label=jointName)
-			print joint + '.rotateOrder1111111222221111111'
-	# THIS NEVER GETS RUN
-			'''
-			job = mc.scriptJob(attributeChange=[joint+'.rotateOrder', 
+			# this used to break things. seems to work now
+			job = mc.scriptJob(attributeChange=[joint+'.rotateOrder',
 								partial(self.attributeChange_callBackMethod, joint, '.rotateOrder')],
 								parent=attrControlGrp)
 			print job
-			'''
-	
-	# THIS NEVER GETS RUN
+
+
 	def attributeChange_callBackMethod(self, sObj, sAttribute, *args):
-		print 'attribute changed'
-		print sObj
-		print sAttribute
+		# print 'attribute changed'
+		# print sObj
+		# print sAttribute
 
 		if mc.checkBox(self.bpUi_instance.dUiElements['symmetryMoveCheckBox'], q=True, value=True):
 			moduleInfo = utils.stripLeadingNamespace(sObj)

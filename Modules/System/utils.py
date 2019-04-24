@@ -318,3 +318,19 @@ def Rp_2segment_stretchy_IK(rootJoint, hingeJoint, endJoint, container=None, sca
 		# addNodeToContainer(container, containedNodes, ihb=True)
 
 	return (rootLoc, elbowLoc, endLoc, utilityNodes)
+
+
+def findJointChain(rootJoint):
+	joints = [rootJoint]
+	parent = rootJoint
+	done = False
+	while not done:
+		children = mc.listRelatives(parent, children=1)
+		children =mc.ls(children, type='joint')
+		if len(children) == 0:
+			done = True
+		else:
+			child = children[0]
+			joints.append(child)
+			parent = child
+	return joints

@@ -15,10 +15,6 @@ class Thumb(finger.Finger):
 
 
 	def __init__(self, CLASS_NAME, sUserSpecifiedName, sHookObj, *args):
-		#! thumb init doesn't work unless Finer.__init__ has a super(self)
-		#! but then Finger won't work
-		#bp.Blueprint.__init__(self, CLASS_NAME, sUserSpecifiedName, jointInfo, sHookObj)
-
 
 		super(Thumb, self).__init__(CLASS_NAME, sUserSpecifiedName, sHookObj, *args)
 

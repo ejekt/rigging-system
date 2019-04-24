@@ -177,12 +177,12 @@ class MirrorModule:
 		mc.rowColumnLayout(nc=3, 
 							columnAttach=(1,'right',0), 
 							columnWidth=[(1,mirrorSettings_textWidth),(2,mirrorSettings_columnWidth),(3,mirrorSettings_columnWidth)])
-		mc.text(label='Rotation Mirror Function: ')
+		mc.text(label='Rotation Mirror\n Function: ')
 		self.dUiElements[rotationRadioCollection] = mc.radioCollection()
 		mc.radioButton(behaviorName, label='Behavior', select=True)
 		mc.radioButton(orientationName, label='Orientation', select=False)
 
-		mc.text(label='Translation Mirror Function: ')
+		mc.text(label='Translation Mirror\n Function: ')
 		self.dUiElements[translationRadioCollection] = mc.radioCollection()
 		mc.radioButton(mirroredName, label='Mirrored', select=True)
 		mc.radioButton(worldSpaceName, label='World Space', select=False)
